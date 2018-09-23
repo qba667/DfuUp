@@ -128,7 +128,7 @@ font: 75 20pt &quot;Courier New&quot;;
      </property>
     </widget>
    </widget>
-   <widget class="QToolButton" name="checkForUpdates">
+   <widget class="QToolButton" name="action">
     <property name="enabled">
      <bool>false</bool>
     </property>

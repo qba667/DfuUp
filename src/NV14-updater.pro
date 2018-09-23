@@ -28,15 +28,29 @@ SOURCES += \
         main.cpp \
         mainwindow.cpp \
     firmwarerequest.cpp \
-    remotefileinfo.cpp
+    remotefileinfo.cpp \
+    dfuutil.cpp
 
 HEADERS += \
         mainwindow.h \
     firmwarerequest.h \
-    remotefileinfo.h
+    remotefileinfo.h \
+    dfuutil.h
 
 FORMS += \
         mainwindow.ui
+
+INCLUDEPATH += $$PWD/../libusb-1.0.22/include
+#LIBS += -L$$PWD/../libusb-1.0.22/MinGW32/static -lusb-1.0
+LIBS += -L$$PWD/../libusb-1.0.22/MS32/static -llibusb-1.0
+
+#DEPENDPATH += $$PWD/../libusb-1.0.22/MinGW32/static
+DEPENDPATH += $$PWD/../libusb-1.0.22/MS32/static
+
+#unix:   LIBS += -L/usr/local/lib/ -lusb-1.0
+#unix:   DEPENDPATH += /usr/local/lib
+
+
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
