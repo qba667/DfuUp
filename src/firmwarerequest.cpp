@@ -2,6 +2,7 @@
 
 FirmwareRequest::FirmwareRequest()
 {
+    lastProgress = -1;
     this->manager = new QNetworkAccessManager();
     connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(managerFinished(QNetworkReply*)));
     connect(manager, SIGNAL(sslErrors(QNetworkReply*, const QList<QSslError>&)),this,SLOT(onIgnoreSSLErrors(QNetworkReply*, const QList<QSslError>&)));
@@ -14,15 +15,23 @@ FirmwareRequest::~FirmwareRequest()
     cleanup();
 }
 void FirmwareRequest::cleanup(){
-    if(reply != nullptr) delete reply;
+    lastProgress = -1;
+    if(reply != nullptr) {
+        delete reply;
+        reply = nullptr;
+    }
     if(targetFile != nullptr) {
         if(targetFile->isOpen()) {
             targetFile->flush();
             targetFile->close();
         }
         delete targetFile;
+        targetFile = nullptr;
     }
-    if(buffer !=nullptr) delete[] buffer;
+    if(buffer !=nullptr) {
+        delete[] buffer;
+        buffer = nullptr;
+    }
 }
 
 void FirmwareRequest::setUID(const QString &uid){
@@ -38,40 +47,12 @@ void FirmwareRequest::onIgnoreSSLErrors(QNetworkReply* reply, const QList<QSslEr
 
 void FirmwareRequest::managerFinished(QNetworkReply *reply){
     if(manager == nullptr) return;
-    emit progress(FirmwareRequest::TEXT_RECIEVING_RESPONSE, 60);
     QNetworkReply::NetworkError error = reply->error();
-    if(!error){
-        QByteArray array = reply->readAll();
-        emit progress(FirmwareRequest::TEXT_PARSING_RESPONSE, 80);
-        QJsonParseError err;
-        doc = QJsonDocument::fromJson(array, &err);
-        if(err.error != QJsonParseError::ParseError::NoError){
-            emit done(err.errorString(), Result::Error, &doc);
-            return;
-        }
-        if(doc.isObject())
-        {
-            QJsonObject obj = doc.object();
-            QJsonObject::iterator status = obj.find("status");
-            QJsonObject::iterator message = obj.find("message");
-            QJsonObject::iterator files = obj.find("files");
-            if(status == obj.end() || message == obj.end() || files == obj.end() || !files.value().isArray() || files.value().toArray().count() == 0)
-            {
-                emit done("Invalid response", Result::Error, &doc);
-            }
-            else if(status.value().toInt()!=200){
-                 emit done(message.value().toString(), Result::Error, &doc);
-            }
-            emit done("File list loaded", Result::Success, &doc);
-        }
-        else{
-            emit done(TEXT_INVALID_RESPNSE, Result::Error, &doc);
-        }
-
-    }
-    else{
-        emit done(reply->errorString(), Result::Error, &doc);
-    }
+    int contentLength = reply->header(QNetworkRequest::ContentLengthHeader).toInt();
+    int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QByteArray resp = reply->readAll();
+    if(!error && code >=200 && code <=300) emit done(TEXT_RESPNSE_RECIEVED,  Result::Success, buffer, contentLength);
+    else emit done(reply->errorString(), Result::Error, buffer, contentLength);
 }
 
 
@@ -82,30 +63,30 @@ void FirmwareRequest::onReadyRead(){
         currentPos = buffer;
     }
     qint64 count = 0;
-    int freeSpace = 0;
     do{
         //check overflow
-        int freeSpace = contentLength - (currentPos - buffer);
+        int freeSpace = contentLength - static_cast<int>(currentPos - buffer);
         if(freeSpace > 1024) freeSpace = 1024;
         count = reply->read(currentPos, freeSpace);
-        if(targetFile!=nullptr) targetFile->write(currentPos, count);
+        if(targetFile!=nullptr && targetFile->isOpen() && count > 0) targetFile->write(currentPos, count);
         currentPos += count;
-    } while(count > 0 && freeSpace > 0);
-    int pVal = ((currentPos - buffer)*100)/contentLength;
-    emit progress(TEXT_PROGRESS_DOWNLOADING.arg(pVal), pVal);
+        int compleated = static_cast<int>(currentPos - buffer);
+        int progressVal = (compleated*100)/ contentLength;
+        if(lastProgress!=progressVal){
+           lastProgress = progressVal;
+           qDebug() << "compleated: " << compleated << "progress: " << progressVal << "contentLength " << contentLength ;
+           emit progress(TEXT_PROGRESS_DOWNLOADING.arg(progressVal), progressVal);
+        }
+
+    } while(count > 0);
 }
 
-
 void FirmwareRequest::onFinished(){
-    progress(TEXT_PROGRESS_DOWNLOADING.arg(100), 100);
-
     if(targetFile!=nullptr) {
         targetFile->flush();
         targetFile->close();
     }
 }
-
-
 
 void FirmwareRequest::getResource(QUrl url, QString file){
     cleanup();
@@ -126,8 +107,8 @@ void FirmwareRequest::getResource(QUrl url, QString file){
     }
 
     reply = manager->get(request);
-    connect(reply, SIGNAL(finished()), this, SLOT(onFinished));
-    connect(reply, SIGNAL(readyRead()), this, SLOT(onReadyRead));
+    connect(reply, SIGNAL(finished()), this, SLOT(onFinished()));
+    connect(reply, SIGNAL(readyRead()), this, SLOT(onReadyRead()));
 }
 
 void FirmwareRequest::getResourceList(){

@@ -3,7 +3,10 @@
 
 #include <QJsonValue>
 #include <QJsonObject>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QUrl>
+#include <vector>
 class RemoteFileInfo
 {
 public:
@@ -15,7 +18,7 @@ public:
     RemoteFileInfo();
     void parse(QJsonValue value);
     bool isValid(char* data, int length);
-
+    static bool ParseResourceList(char* data, int length, std::vector<RemoteFileInfo>& results, QString& error);
     QString id;
     ResourceType type;
     QString name;
@@ -37,6 +40,8 @@ public:
     const QString JSON_vid = "vid";
     const QString JSON_pid = "pid";
     const QString JSON_url = "url";
+
+    static const QString TEXT_invalidResponse;
 };
 
 #endif // REMOTEFILEINFO_H

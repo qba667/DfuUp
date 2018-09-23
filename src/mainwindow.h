@@ -11,6 +11,7 @@
 #include <QFileDialog>
 #include "firmwarerequest.h"
 #include "remotefileinfo.h"
+#include <vector>
 
 namespace Ui {
 class MainWindow;
@@ -37,25 +38,24 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event);
 private slots:
     void on_uid1_textChanged(const QString &arg1);
-
     void on_uid2_textChanged(const QString &arg1);
-
     void on_uid3_textChanged(const QString &arg1);
-
     void on_checkForUpdates_released();
     void onProgress(const QString& message, int progress);
-    void onDone(const QString& message, FirmwareRequest::Result status, QJsonDocument* result);
     void onDone(const QString& message, FirmwareRequest::Result status, char* result, int length);
     void on_fwList_currentIndexChanged(int index);
 private:
+    uint selectedIndex();
     void setError(Operation nextOperation);
     void setOperation(Operation operation);
-    void getFwList();
     void appendStatus(const QString& message);
     void checkUID();
     void setButton(const QString& message, const QString& style, QPixmap* icon, bool enabled);
     void fillFwList(QJsonDocument* result);
     QVariant GetFwInfo(QJsonValue& val);
+    std::vector<RemoteFileInfo> remoteFiles;
+
+
     QPixmap img_error = QPixmap(QString::fromUtf8(":/resources/error.png"));
     QPixmap img_ok = QPixmap(QString::fromUtf8(":/resources/ok.png"));
     QPixmap img_help = QPixmap(QString::fromUtf8(":/resources/help.png"));
@@ -85,6 +85,7 @@ private:
     const QString Text_UPDATING_TX = "TX updating...";
     const QString Text_DETECTING_TX = "TX detecting...";
     const QString Text_DOWNLOADING = "Downloading...";
+    const QString Text_CHECKING = "Checking for updates...";
 };
 
 #endif // MAINWINDOW_H

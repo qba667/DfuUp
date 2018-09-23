@@ -20,7 +20,6 @@ MainWindow::MainWindow(QWidget *parent) :
     qApp->installEventFilter(this);
     fwRequest = new FirmwareRequest();
     connect(fwRequest, SIGNAL (progress(const QString&, int)), this, SLOT (onProgress(const QString&, int)));
-    connect(fwRequest, SIGNAL (done(const QString&, FirmwareRequest::Result, QJsonDocument*)), this, SLOT (onDone(const QString&, FirmwareRequest::Result, QJsonDocument*)));
     connect(fwRequest, SIGNAL (done(const QString&, FirmwareRequest::Result, char*, int)), this, SLOT (onDone(const QString&, FirmwareRequest::Result, char*, int)));
 }
 
@@ -88,7 +87,7 @@ void MainWindow::checkUID(){
         list.append(ui->uid2->text());
         list.append(ui->uid3->text());
         settings.setValue(UID_LIST, QVariant(list));
-        ui->checkForUpdates->setEnabled(true);
+        ui->action->setEnabled(true);
     }
 }
 
@@ -118,10 +117,10 @@ void MainWindow::onProgress(const QString& message, int progress){
 }
 
 void MainWindow::setButton(const QString& message, const QString& style, QPixmap* icon, bool enabled){
-    ui->checkForUpdates->setIcon(*icon);
-    ui->checkForUpdates->setText(message);
-    ui->checkForUpdates->setStyleSheet(style);
-    ui->checkForUpdates->setEnabled(enabled);
+    ui->action->setIcon(*icon);
+    ui->action->setText(message);
+    ui->action->setStyleSheet(style);
+    ui->action->setEnabled(enabled);
 }
 
 void MainWindow::setError(Operation nextOperation){
@@ -139,37 +138,40 @@ void MainWindow::onDone(const QString& message, FirmwareRequest::Result status, 
     ui->progressBar->setValue(100);
     appendStatus(message);
     if(status == FirmwareRequest::Error){
-        setError(SelectResource);
-        return;
-    }
-    RemoteFileInfo rfi;
-    rfi.parse(ui->fwList->currentData().toJsonValue());
-    appendStatus(message);
-    appendStatus(Text_VALIDATIN_CHECKSUM);
-    if(!rfi.isValid(result, length)){
-       appendStatus(Text_INVALID_CHECKSUM);
-       setError(SelectResource);
-       return;
-    }
-    switch(rfi.type){
-    case RemoteFileInfo::ResourceType::Archive:
-        setOperation(SelectResource);
-        ui->fwList->setCurrentIndex(0);
-        break;
-    case RemoteFileInfo::ResourceType::Firmware:
-        setOperation(UpdateTX);
-        break;
-    }
-}
-void MainWindow::onDone(const QString& message, FirmwareRequest::Result status,  QJsonDocument* result){
-    ui->progressBar->setValue(100);
-    appendStatus(message);
-    if(status == FirmwareRequest::Error){
         setError(GetResourceList);
         return;
     }
-    fillFwList(result);
-    setOperation(SelectResource);
+    if(currentOperation == GetResourceList){
+        QString error;
+        if(!RemoteFileInfo::ParseResourceList(result, length, remoteFiles, error)){
+            if(error.length() > 0) appendStatus(error);
+            setError(GetResourceList);
+            return;
+        }
+        ui->fwList->addItem("--------------");
+        foreach (const RemoteFileInfo& rfi, remoteFiles){
+            ui->fwList->addItem("[" + rfi.version + "] " + rfi.name);
+        }
+        setOperation(SelectResource);
+    }
+    else if (currentOperation == DownloadFirmware || currentOperation == DownloadArchive){
+        RemoteFileInfo rfi = remoteFiles[selectedIndex()];
+        appendStatus(message);
+        appendStatus(Text_VALIDATIN_CHECKSUM);
+        if(!rfi.isValid(result, length)){
+           appendStatus(Text_INVALID_CHECKSUM);
+           setError(SelectResource);
+           return;
+        }
+        switch(rfi.type){
+        case RemoteFileInfo::ResourceType::Archive:
+            setOperation(SelectResource);
+            break;
+        case RemoteFileInfo::ResourceType::Firmware:
+            setOperation(UpdateTX);
+            break;
+        }
+    }
 }
 
 void MainWindow::setOperation(Operation operation){
@@ -177,76 +179,75 @@ void MainWindow::setOperation(Operation operation){
     switch(operation){
     case GetResourceList:
         setButton(Text_CHECK_UPDATES, styleBlue, &img_reload, true);
+        ui->fwList->setCurrentIndex(0);
+        ui->fwList->setVisible(false);
+        ui->fwList->setEnabled(false);
         break;
     case SelectResource:
         setButton(Text_SELECT_RESOURCE, styleBlue, &img_reload, true);
+        ui->fwList->setCurrentIndex(0);
         ui->fwList->setVisible(true);
+        ui->fwList->setEnabled(true);
         break;
     case DownloadFirmware:
         setButton(Text_DOWNLOAD_FW, styleBlue, &img_reload, true);
         ui->fwList->setVisible(true);
+        ui->fwList->setEnabled(false);
         break;
     case DownloadArchive:
         setButton(Text_DOWNLOAD_ARCHIVE, styleBlue, &img_reload, true);
         ui->fwList->setVisible(true);
+        ui->fwList->setEnabled(false);
         break;
     case UpdateTX:
         setButton(Text_UPDATE_TX, styleBlue, &img_reload, true);
         ui->fwList->setVisible(true);
+        ui->fwList->setEnabled(false);
         break;
     case DetectTX:
         setButton(Text_DETECTING_TX, styleBlue, &img_wait, false);
-        ui->fwList->setVisible(false);
+        ui->fwList->setVisible(true);
+        ui->fwList->setEnabled(false);
         break;
     case BurnFirmware:
         setButton(Text_UPDATING_TX, styleBlue, &img_wait, false);
-        ui->fwList->setVisible(false);
+        ui->fwList->setVisible(true);
+        ui->fwList->setEnabled(false);
         break;
     default:
         break;
     }
 }
 
-void MainWindow::fillFwList(QJsonDocument* result){
-    QJsonObject obj = result->object();
-    QJsonArray firmwares = obj["files"].toArray();
-    ui->fwList->addItem("--------------");
-    foreach (const QJsonValue & val, firmwares){
-        ui->fwList->addItem("[" + val["version"].toString() + "] " + val["name"].toString(), QVariant(val));
-    }
-}
-void MainWindow::getFwList(){
-    QString uid = ui->uid1->text()+ui->uid2->text()+ui->uid3->text();
-    setButton("Checking...", styleGreen, &img_wait, false);
-    fwRequest->setUID(uid);
-    fwRequest->getResourceList();
-}
+
 void MainWindow::on_checkForUpdates_released()
 {
-    switch(currentOperation){
-    case GetResourceList:
-        getFwList();
-        break;
-    case DownloadArchive: {
-        RemoteFileInfo rfi;
-        rfi.parse(ui->fwList->currentData().toJsonValue());
+    QString path;
+
+    if(currentOperation == DownloadArchive){
+        RemoteFileInfo rfi = remoteFiles[selectedIndex()];
         QString defaultFilter("%1 files (*.%1)");
         defaultFilter = defaultFilter.arg(rfi.fileName.split(".").last());
         QString path = QFileDialog::getSaveFileName(this, tr("Save file as"), rfi.fileName, defaultFilter + ";;All files (*.*)", &defaultFilter);
-        if(path.length()==0){
-            return;
-        }
+        if(path.length()==0) return;
+    }
+
+    switch(currentOperation){
+    case GetResourceList:
+    {
+        setButton(Text_CHECKING, styleGreen, &img_wait, false);
+        fwRequest->setUID(ui->uid1->text()+ui->uid2->text()+ui->uid3->text());
+        fwRequest->getResourceList();
+    }
+        break;
+    case DownloadArchive:
+    case DownloadFirmware:
+    {
+
+        RemoteFileInfo rfi = remoteFiles[selectedIndex()];
         setButton(Text_DOWNLOADING, styleGreen, &img_wait, false);
         fwRequest->getResource(rfi.url, path);
     }
-        break;
-    case DownloadFirmware:
-        {
-            RemoteFileInfo rfi;
-            rfi.parse(ui->fwList->currentData().toJsonValue());
-            setButton(Text_DOWNLOADING, styleGreen, &img_wait, false);
-            fwRequest->getResource(rfi.url);
-        }
         break;
     case UpdateTX:
     {
@@ -258,13 +259,17 @@ void MainWindow::on_checkForUpdates_released()
     }
 }
 
+uint MainWindow::selectedIndex(){
+    return static_cast<uint>(ui->fwList->currentIndex() -1);
+}
+
 void MainWindow::on_fwList_currentIndexChanged(int index)
 {
-     QVariant data = ui->fwList->itemData(index);
-     if(data == NULL) return;
-    RemoteFileInfo rfi;
-    rfi.parse(data.toJsonValue());
-
+    if(index <= 0 || remoteFiles.empty() || remoteFiles.size() < static_cast<uint>(index)){
+         setOperation(SelectResource);
+         return;
+    }
+    RemoteFileInfo rfi = remoteFiles[selectedIndex()];
     switch(rfi.type){
         case RemoteFileInfo::Archive:
             setOperation(DownloadArchive);
