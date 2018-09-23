@@ -9,6 +9,7 @@
 #include <QJsonValue>
 #include <QJsonArray>
 #include <QSslError>
+#include <QFile>
 
 class FirmwareRequest : public QObject
 {
@@ -22,24 +23,45 @@ public:
     FirmwareRequest();
     ~FirmwareRequest();
     void setUID(const QString &uid);
-    void getFirmwareList();
+    void getResourceList();
+    void getResource(QUrl url, QString file = QString(""));
+
 signals:
     void progress(const QString& message, int progress);
     void done(const QString& message, FirmwareRequest::Result status, QJsonDocument* result);
+    void done(const QString& message, FirmwareRequest::Result status, char* result, int length);
+
 private slots:
     void managerFinished(QNetworkReply *reply);
     void onIgnoreSSLErrors(QNetworkReply* reply, const QList<QSslError> &errors);
+    void onReadyRead();
+    void onFinished();
+
 private:
+
+
     QJsonDocument doc;
     QString* uid;
     QNetworkAccessManager *manager;
-    const QString Progress_CHECKIG = QString("Checking for updates.");
-    const QString Progress_SENDING = QString("Sending request.");
-    const QString Progress_RECIEVING = QString("Recieving response.");
-    const QString Progress_CHECKINGERROR = QString("Checking errors.");
-    const QString Progress_PARSING_RESP = QString("Parsing response.");
 
-    const QString Response_INVALID_SERV = QString("Invalid server response.");
+    //resetet on every request!!!
+    void cleanup();
+    QNetworkReply* reply = nullptr;
+    QFile* targetFile = nullptr;
+    char* buffer = nullptr;
+    char* currentPos = nullptr;
+
+
+
+    const QString TEXT_CHECKING_4_UPDATES = QString("Checking for updates.");
+    const QString TEXT_SENDING_REQUEST = QString("Sending request.");
+    const QString TEXT_RECIEVING_RESPONSE = QString("Recieving response.");
+    const QString TEXT_CHECKING_RESONSE = QString("Checking errors.");
+    const QString TEXT_PARSING_RESPONSE = QString("Parsing response.");
+    const QString TEXT_INVALID_RESPNSE = QString("Invalid server response.");
+    const QString TEXT_CAN_NOT_CREATE_FILE = QString("Can't Create File.");
+    const QString TEXT_PROGRESS_DOWNLOADING = QString("Downloading %1%.");
+
 
     const QString repositoryURL = QString("https://update.nv14.local/firmware.json");
     const QVariant clinetAgent = QVariant("NV14-update-tool");

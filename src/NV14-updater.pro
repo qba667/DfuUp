@@ -27,11 +27,13 @@ CONFIG += c++11
 SOURCES += \
         main.cpp \
         mainwindow.cpp \
-    firmwarerequest.cpp
+    firmwarerequest.cpp \
+    remotefileinfo.cpp
 
 HEADERS += \
         mainwindow.h \
-    firmwarerequest.h
+    firmwarerequest.h \
+    remotefileinfo.h
 
 FORMS += \
         mainwindow.ui
