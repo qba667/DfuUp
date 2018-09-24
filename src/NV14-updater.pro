@@ -29,28 +29,20 @@ SOURCES += \
         mainwindow.cpp \
     firmwarerequest.cpp \
     remotefileinfo.cpp \
-    dfuutil.cpp
+    dfu/dfu.c \
+    dfu/stm32mem.c \
+    dfu_manager.cpp
 
 HEADERS += \
         mainwindow.h \
     firmwarerequest.h \
     remotefileinfo.h \
-    dfuutil.h
+    dfu/dfu.h \
+    dfu/stm32mem.h \
+    dfu_manager.h
 
 FORMS += \
         mainwindow.ui
-
-INCLUDEPATH += $$PWD/../libusb-1.0.22/include
-#LIBS += -L$$PWD/../libusb-1.0.22/MinGW32/static -lusb-1.0
-LIBS += -L$$PWD/../libusb-1.0.22/MS32/static -llibusb-1.0
-
-#DEPENDPATH += $$PWD/../libusb-1.0.22/MinGW32/static
-DEPENDPATH += $$PWD/../libusb-1.0.22/MS32/static
-
-#unix:   LIBS += -L/usr/local/lib/ -lusb-1.0
-#unix:   DEPENDPATH += /usr/local/lib
-
-
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -59,3 +51,14 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 RESOURCES += \
     resources.qrc
+
+win32: LIBS += -L$$PWD/../libusb-win32/lib/gcc -llibusb
+unix: LIBS += -L/usr/local/lib -lusb
+
+win32: INCLUDEPATH += $$PWD/../libusb-win32/include
+
+win32:!win32-g++: DEPENDPATH += $$PWD/../libusb-win32/msvc/static
+else:win32-g++: DEPENDPATH += $$PWD/../libusb-win32/lib/gcc
+
+win32:!win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-win32/lib/msvc/libusb.lib
+else:win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-win32/lib/gcc/libusb.a

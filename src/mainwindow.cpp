@@ -6,6 +6,9 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    firmware = nullptr;
+    firmwareLength =0;
+    validDFUDevice = false;
     ui->setupUi(this);
     QStringList list = QStringList();
     list.append("");
@@ -21,16 +24,32 @@ MainWindow::MainWindow(QWidget *parent) :
     fwRequest = new FirmwareRequest();
     connect(fwRequest, SIGNAL (progress(const QString&, int)), this, SLOT (onProgress(const QString&, int)));
     connect(fwRequest, SIGNAL (done(const QString&, FirmwareRequest::Result, char*, int)), this, SLOT (onDone(const QString&, FirmwareRequest::Result, char*, int)));
-}
+    connect(ui->action, SIGNAL(released()), this, SLOT(actionTriggered()));
+    connect(ui->fwList, SIGNAL(currentIndexChanged(int)), this, SLOT(onResoueceChanged(int)));
 
-void MainWindow::appendStatus(const QString& message){
- ui->fwInfo->append("[" + QDateTime::currentDateTime().toString("hh:mm:ss") + "] " + message);
+    dfu_manager.moveToThread(&dfu_thread);
+    connect(&dfu_thread, SIGNAL(started()), &dfu_manager, SLOT(start()));
+    connect(&dfu_thread, SIGNAL(finished()), &dfu_manager, SLOT(stop()));
+
+    connect(&dfu_manager, SIGNAL(foundDevice(QString*)), this, SLOT(foundDevice(QString*)));
+    connect(&dfu_manager, SIGNAL(lostDevice()), this, SLOT(lostDevice()));
+    connect(&dfu_manager, SIGNAL(dfuDone(bool, const QString&)), this, SLOT(onDfuDone(bool, const QString&)));
+    connect(&dfu_manager, SIGNAL(dfuProgress(uint, uint)), this, SLOT(onDfuProgress(uint, uint)));
+
+    connect(this, SIGNAL(doFlash(uint, char*, uint)), &dfu_manager, SLOT(flash(uint, char*, uint)));
+    connect(this, SIGNAL(stopUSB()), &dfu_manager, SLOT(stop()));
+    connect(this, SIGNAL(stopUSB()), &dfu_thread, SLOT(terminate()));
+    dfu_thread.start();
 }
 
 MainWindow::~MainWindow()
 {
+    emit stopUSB();
+    dfu_thread.exit();
     delete ui;
 }
+
+
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
     if ((obj == ui->uid1 || obj == ui->uid2 || obj == ui->uid3) && event->type() == QEvent::KeyPress)
@@ -111,6 +130,10 @@ void MainWindow::on_uid3_textChanged(const QString &arg1)
     checkUID();
 }
 
+void MainWindow::appendStatus(const QString& message){
+ ui->fwInfo->append("[" + QDateTime::currentDateTime().toString("hh:mm:ss") + "] " + message);
+}
+
 void MainWindow::onProgress(const QString& message, int progress){
     ui->progressBar->setValue(progress);
     appendStatus(message);
@@ -123,15 +146,19 @@ void MainWindow::setButton(const QString& message, const QString& style, QPixmap
     ui->action->setEnabled(enabled);
 }
 
-void MainWindow::setError(Operation nextOperation){
-    setButton("Error", styleRed, &img_error, false);
+void MainWindow::setOperationAfterTimeout(Operation nextOperation, int timeout){
     QTimer* timer = new QTimer;
     QObject::connect(timer, &QTimer::timeout, [this, nextOperation](){
         setOperation(nextOperation);
     });
     connect(timer, &QTimer::timeout, timer, &QTimer::deleteLater);
     timer->setSingleShot(true);
-    timer->start(5000);
+    timer->start(timeout);
+}
+
+void MainWindow::setError(Operation nextOperation){
+    setButton("Error", styleRed, &img_error, false);
+    setOperationAfterTimeout(nextOperation, 5000);
 }
 
 void MainWindow::onDone(const QString& message, FirmwareRequest::Result status, char* result, int length){
@@ -214,13 +241,20 @@ void MainWindow::setOperation(Operation operation){
         ui->fwList->setVisible(true);
         ui->fwList->setEnabled(false);
         break;
+    case Done:
+        setButton(Text_UPDATE_SUCCESS, styleBlue, &img_ok, false);
+        ui->fwList->setVisible(true);
+        ui->fwList->setEnabled(false);
+        setOperationAfterTimeout(SelectResource, 5000);
+        break;
+
     default:
         break;
     }
 }
 
 
-void MainWindow::on_checkForUpdates_released()
+void MainWindow::actionTriggered()
 {
     QString path;
 
@@ -254,6 +288,33 @@ void MainWindow::on_checkForUpdates_released()
         setOperation(DetectTX);
     }
         break;
+    case DetectTX:
+    {
+        if(validDFUDevice) setOperation(BurnFirmware);
+        else{
+            setButton(Text_DETECTING_TX, styleGreen, &img_wait, false);
+        }
+    }
+        break;
+    case BurnFirmware: {
+        if (firmwareLength == 0 || firmware== nullptr) {
+            appendStatus("File is empty!");
+            setError(SelectResource);
+            return;
+        }
+
+        if (firmwareLength > dfu_manager.get_flash_size()) {
+            appendStatus("File is too big!");
+            setError(SelectResource);
+            return;
+        }
+
+        ui->progressBar->setValue(0);
+        ui->progressBar->show();
+
+        emit doFlash(0x8000000U, firmware, firmwareLength);
+    }
+        break;
     default:
         break;
     }
@@ -263,7 +324,7 @@ uint MainWindow::selectedIndex(){
     return static_cast<uint>(ui->fwList->currentIndex() -1);
 }
 
-void MainWindow::on_fwList_currentIndexChanged(int index)
+void MainWindow::onResoueceChanged(int index)
 {
     if(index <= 0 || remoteFiles.empty() || remoteFiles.size() < static_cast<uint>(index)){
          setOperation(SelectResource);
@@ -279,3 +340,36 @@ void MainWindow::on_fwList_currentIndexChanged(int index)
             break;
     }
 }
+
+
+void MainWindow::foundDevice(QString *name){
+    validDFUDevice = true;
+    appendStatus(QString("DFU device found - %1").arg(*name));
+    if(currentOperation == DetectTX){
+        setOperation(BurnFirmware);
+    }
+}
+void MainWindow::lostDevice(){
+    validDFUDevice = false;
+}
+
+void MainWindow::onDfuDone(bool success, const QString& message){
+
+    appendStatus(message);
+    if(!success){
+        setError(UpdateTX);
+    }
+    else{
+        setOperationAfterTimeout(SelectResource, 5000);
+    }
+
+}
+void MainWindow::onDfuProgress(uint address, uint percent){
+    onProgress(QString("Written at %1").arg(address, 1, 16), static_cast<int>(percent));
+}
+
+
+
+
+
+
