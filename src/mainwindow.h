@@ -9,9 +9,12 @@
 #include <QDateTime>
 #include <QTimer>
 #include <QFileDialog>
+#include <QThread>
+
 #include "firmwarerequest.h"
 #include "remotefileinfo.h"
 #include <vector>
+#include "dfu_manager.h"
 
 namespace Ui {
 class MainWindow;
@@ -34,6 +37,8 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+signals:
+    void doFlash(char* buffer, int length);
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
 private slots:
@@ -44,6 +49,14 @@ private slots:
     void onProgress(const QString& message, int progress);
     void onDone(const QString& message, FirmwareRequest::Result status, char* result, int length);
     void on_fwList_currentIndexChanged(int index);
+    void flash();
+
+    //DFU
+    void foundDevice(QString *string);
+    void lostDevice();
+    void finishedFlash();
+    void onFlashProgressUpdate(int address, int percent);
+
 private:
     uint selectedIndex();
     void setError(Operation nextOperation);
@@ -53,9 +66,17 @@ private:
     void setButton(const QString& message, const QString& style, QPixmap* icon, bool enabled);
     void fillFwList(QJsonDocument* result);
     QVariant GetFwInfo(QJsonValue& val);
+
+
+    char* firmware;
+    int firmwareLength;
+
+    QThread dfu_thread;
+    DFUManager dfu_manager;
+    bool device_valid;
+
+
     std::vector<RemoteFileInfo> remoteFiles;
-
-
     QPixmap img_error = QPixmap(QString::fromUtf8(":/resources/error.png"));
     QPixmap img_ok = QPixmap(QString::fromUtf8(":/resources/ok.png"));
     QPixmap img_help = QPixmap(QString::fromUtf8(":/resources/help.png"));
@@ -86,6 +107,7 @@ private:
     const QString Text_DETECTING_TX = "TX detecting...";
     const QString Text_DOWNLOADING = "Downloading...";
     const QString Text_CHECKING = "Checking for updates...";
+
 };
 
 #endif // MAINWINDOW_H

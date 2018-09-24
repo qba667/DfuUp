@@ -28,12 +28,18 @@ SOURCES += \
         main.cpp \
         mainwindow.cpp \
     firmwarerequest.cpp \
-    remotefileinfo.cpp
+    remotefileinfo.cpp \
+    dfu/dfu.c \
+    dfu/stm32mem.c \
+    dfu_manager.cpp
 
 HEADERS += \
         mainwindow.h \
     firmwarerequest.h \
-    remotefileinfo.h
+    remotefileinfo.h \
+    dfu/dfu.h \
+    dfu/stm32mem.h \
+    dfu_manager.h
 
 FORMS += \
         mainwindow.ui
@@ -45,3 +51,14 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 RESOURCES += \
     resources.qrc
+
+win32: LIBS += -L$$PWD/../libusb-win32/lib/gcc -llibusb
+unix: LIBS += -L/usr/local/lib -lusb
+
+win32: INCLUDEPATH += $$PWD/../libusb-win32/include
+
+win32:!win32-g++: DEPENDPATH += $$PWD/../libusb-win32/msvc/static
+else:win32-g++: DEPENDPATH += $$PWD/../libusb-win32/lib/gcc
+
+win32:!win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-win32/lib/msvc/libusb.lib
+else:win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-win32/lib/gcc/libusb.a

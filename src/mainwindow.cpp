@@ -6,6 +6,20 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    char* firmware = nullptr;
+    int firmwareLength =0;
+
+    device_valid = false;
+    //connect(ui->pushButton_Flash, SIGNAL(clicked()), this, SLOT(flash()));
+    dfu_manager.moveToThread(&dfu_thread);
+
+    connect(&dfu_manager, SIGNAL(foundDevice(QString*)), this, SLOT(foundDevice(QString*)));
+    connect(&dfu_manager, SIGNAL(lostDevice()), this, SLOT(lostDevice()));
+    connect(&dfu_thread, SIGNAL(started()), &dfu_manager, SLOT(start()));
+    connect(&dfu_manager, SIGNAL(finishedFlash()), this, SLOT(finishedFlash()));
+    connect(&dfu_manager, SIGNAL(flashProgressUpdate(int, int)), this, SLOT(onFlashProgressUpdate(int, int)));
+    connect(this, SIGNAL(doFlash(char*, int)), &dfu_manager, SLOT(flash(char*, int)));
+
     ui->setupUi(this);
     QStringList list = QStringList();
     list.append("");
@@ -254,6 +268,13 @@ void MainWindow::on_checkForUpdates_released()
         setOperation(DetectTX);
     }
         break;
+    case DetectTX:
+    {
+    }
+        //check if detected
+        //wait for detection
+
+        break;
     default:
         break;
     }
@@ -279,3 +300,42 @@ void MainWindow::on_fwList_currentIndexChanged(int index)
             break;
     }
 }
+
+
+void MainWindow::foundDevice(QString *string){
+
+}
+void MainWindow::lostDevice(){
+
+}
+void MainWindow::flash(){
+
+    if (firmwareLength == 0 || firmware== nullptr) {
+        appendStatus("File is empty!");
+        setError(SelectResource);
+        return;
+    }
+
+    if (firmwareLength > dfu_manager.get_flash_size()) {
+        appendStatus("File is too big!");
+        setError(SelectResource);
+        return;
+    }
+
+    ui->progressBar->setValue(0);
+    ui->progressBar->show();
+
+    emit doFlash(firmware, firmwareLength);
+}
+void MainWindow::finishedFlash(){
+
+}
+void MainWindow::onFlashProgressUpdate(int address, int percent){
+    onProgress(QString("Written at %1").arg(address, 1, 16), percent);
+}
+
+
+
+
+
+
