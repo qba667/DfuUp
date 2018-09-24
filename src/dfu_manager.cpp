@@ -32,11 +32,8 @@ DFUManager::DFUManager(QObject *parent) :
     QObject(parent)
 {
     usb_init();
-
-    timer.setInterval(2000);
-    connect(&timer, SIGNAL(timeout()), this, SLOT(findIFace()));
     handle = NULL;
-
+    timer = nullptr;
     block_size = 1024;
     flash_size_mutex.lock();
     flash_size = 0x20000; /* 128kb */
@@ -56,7 +53,10 @@ DFUManager::~DFUManager()
 void DFUManager::start()
 {
     findIFace();
-    timer.start();
+    timer = new QTimer(this);
+    timer->setInterval(2000);
+    connect(timer, SIGNAL(timeout()), this, SLOT(findIFace()));
+    timer->start();
 }
 
 void DFUManager::findIFace()
@@ -194,6 +194,7 @@ struct usb_dev_handle *DFUManager::getDFUIface(struct usb_device *dev, uint16_t 
 
 void DFUManager::flash(char* buffer, int length)
 {
+    if(timer!=nullptr) timer->stop();
     //tbd create copy
     dfu_makeidle(handle, iface);
     for (int offset = 0; offset < length; offset += block_size) {
@@ -201,7 +202,7 @@ void DFUManager::flash(char* buffer, int length)
         if (stm32_mem_erase(handle, iface, LOAD_ADDRESS + offset) != 0) {
             /* TODO: emit error */
             emit finishedFlash();
-            timer.start();
+             if(timer!=nullptr) timer->start();
         }
 
         stm32_mem_write(handle, iface, (void*)buffer+offset, block_size);
@@ -212,7 +213,7 @@ void DFUManager::flash(char* buffer, int length)
     usb_close(handle);
     handle = NULL;
     emit finishedFlash();
-    timer.start();
+     if(timer!=nullptr) timer->start();
 }
 
 int DFUManager::get_flash_size()

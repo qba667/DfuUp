@@ -6,19 +6,8 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
-    char* firmware = nullptr;
-    int firmwareLength =0;
-
-    device_valid = false;
-    //connect(ui->pushButton_Flash, SIGNAL(clicked()), this, SLOT(flash()));
-    dfu_manager.moveToThread(&dfu_thread);
-
-    connect(&dfu_manager, SIGNAL(foundDevice(QString*)), this, SLOT(foundDevice(QString*)));
-    connect(&dfu_manager, SIGNAL(lostDevice()), this, SLOT(lostDevice()));
-    connect(&dfu_thread, SIGNAL(started()), &dfu_manager, SLOT(start()));
-    connect(&dfu_manager, SIGNAL(finishedFlash()), this, SLOT(finishedFlash()));
-    connect(&dfu_manager, SIGNAL(flashProgressUpdate(int, int)), this, SLOT(onFlashProgressUpdate(int, int)));
-    connect(this, SIGNAL(doFlash(char*, int)), &dfu_manager, SLOT(flash(char*, int)));
+    firmware = nullptr;
+    firmwareLength =0;
 
     ui->setupUi(this);
     QStringList list = QStringList();
@@ -35,6 +24,20 @@ MainWindow::MainWindow(QWidget *parent) :
     fwRequest = new FirmwareRequest();
     connect(fwRequest, SIGNAL (progress(const QString&, int)), this, SLOT (onProgress(const QString&, int)));
     connect(fwRequest, SIGNAL (done(const QString&, FirmwareRequest::Result, char*, int)), this, SLOT (onDone(const QString&, FirmwareRequest::Result, char*, int)));
+    connect(ui->action, SIGNAL(released()), this, SLOT(actionTriggered()));
+    connect(ui->fwList, SIGNAL(currentIndexChanged(int)), this, SLOT(onResoueceChanged(int)));
+
+    device_valid = false;
+    dfu_manager.moveToThread(&dfu_thread);
+    connect(&dfu_manager, SIGNAL(foundDevice(QString*)), this, SLOT(foundDevice(QString*)));
+    connect(&dfu_manager, SIGNAL(lostDevice()), this, SLOT(lostDevice()));
+    connect(&dfu_thread, SIGNAL(started()), &dfu_manager, SLOT(start()));
+    connect(&dfu_manager, SIGNAL(finishedFlash()), this, SLOT(finishedFlash()));
+    connect(&dfu_manager, SIGNAL(flashProgressUpdate(int, int)), this, SLOT(onFlashProgressUpdate(int, int)));
+    connect(this, SIGNAL(doFlash(char*, int)), &dfu_manager, SLOT(flash(char*, int)));
+
+
+    dfu_thread.start();
 }
 
 void MainWindow::appendStatus(const QString& message){
@@ -234,7 +237,7 @@ void MainWindow::setOperation(Operation operation){
 }
 
 
-void MainWindow::on_checkForUpdates_released()
+void MainWindow::actionTriggered()
 {
     QString path;
 
@@ -284,7 +287,7 @@ uint MainWindow::selectedIndex(){
     return static_cast<uint>(ui->fwList->currentIndex() -1);
 }
 
-void MainWindow::on_fwList_currentIndexChanged(int index)
+void MainWindow::onResoueceChanged(int index)
 {
     if(index <= 0 || remoteFiles.empty() || remoteFiles.size() < static_cast<uint>(index)){
          setOperation(SelectResource);

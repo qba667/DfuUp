@@ -45,12 +45,13 @@ private slots:
     void on_uid1_textChanged(const QString &arg1);
     void on_uid2_textChanged(const QString &arg1);
     void on_uid3_textChanged(const QString &arg1);
-    void on_checkForUpdates_released();
+
     void onProgress(const QString& message, int progress);
     void onDone(const QString& message, FirmwareRequest::Result status, char* result, int length);
-    void on_fwList_currentIndexChanged(int index);
-    void flash();
 
+    void flash();
+    void onResoueceChanged(int index);
+    void actionTriggered();
     //DFU
     void foundDevice(QString *string);
     void lostDevice();

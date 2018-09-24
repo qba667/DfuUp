@@ -36,7 +36,7 @@ public:
     int get_flash_size();
 
 private:
-    QTimer timer;
+    QTimer* timer;
     struct usb_device *dev;
     struct usb_dev_handle *handle;
     uint16_t iface;
