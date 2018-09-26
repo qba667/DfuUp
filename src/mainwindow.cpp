@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "firmwarerequest.h"
+#include <qmimedata.h>
+#include <QDrag>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -31,7 +33,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(&dfu_thread, SIGNAL(started()), &dfu_manager, SLOT(start()));
     connect(&dfu_thread, SIGNAL(finished()), &dfu_manager, SLOT(stop()));
 
-    connect(&dfu_manager, SIGNAL(foundDevice(QString*)), this, SLOT(foundDevice(QString*)));
+    connect(&dfu_manager, SIGNAL(foundDevice()), this, SLOT(foundDevice()));
     connect(&dfu_manager, SIGNAL(lostDevice()), this, SLOT(lostDevice()));
     connect(&dfu_manager, SIGNAL(dfuDone(bool, const QString&)), this, SLOT(onDfuDone(bool, const QString&)));
     connect(&dfu_manager, SIGNAL(dfuProgress(uint, uint)), this, SLOT(onDfuProgress(uint, uint)));
@@ -195,6 +197,9 @@ void MainWindow::onDone(const QString& message, FirmwareRequest::Result status, 
             setOperation(SelectResource);
             break;
         case RemoteFileInfo::ResourceType::Firmware:
+            //create copy!
+            firmware = result;
+            firmwareLength = length;
             setOperation(UpdateTX);
             break;
         }
@@ -235,11 +240,32 @@ void MainWindow::setOperation(Operation operation){
         setButton(Text_DETECTING_TX, styleBlue, &img_wait, false);
         ui->fwList->setVisible(true);
         ui->fwList->setEnabled(false);
+        if(validDFUDevice) setOperation(BurnFirmware);
+        else{
+            setButton(Text_DETECTING_TX, styleGreen, &img_wait, false);
+        }
         break;
     case BurnFirmware:
         setButton(Text_UPDATING_TX, styleBlue, &img_wait, false);
         ui->fwList->setVisible(true);
         ui->fwList->setEnabled(false);
+
+        if (firmwareLength == 0 || firmware== nullptr) {
+            appendStatus("File is empty!");
+            setError(SelectResource);
+            return;
+        }
+
+        if (firmwareLength > dfu_manager.flash_size) {
+            appendStatus("File is too big!");
+            setError(SelectResource);
+            return;
+        }
+
+        ui->progressBar->setValue(0);
+        ui->progressBar->show();
+
+        emit doFlash(0x8000000U, firmware, firmwareLength);
         break;
     case Done:
         setButton(Text_UPDATE_SUCCESS, styleBlue, &img_ok, false);
@@ -290,29 +316,11 @@ void MainWindow::actionTriggered()
         break;
     case DetectTX:
     {
-        if(validDFUDevice) setOperation(BurnFirmware);
-        else{
-            setButton(Text_DETECTING_TX, styleGreen, &img_wait, false);
-        }
+
     }
         break;
     case BurnFirmware: {
-        if (firmwareLength == 0 || firmware== nullptr) {
-            appendStatus("File is empty!");
-            setError(SelectResource);
-            return;
-        }
 
-        if (firmwareLength > dfu_manager.get_flash_size()) {
-            appendStatus("File is too big!");
-            setError(SelectResource);
-            return;
-        }
-
-        ui->progressBar->setValue(0);
-        ui->progressBar->show();
-
-        emit doFlash(0x8000000U, firmware, firmwareLength);
     }
         break;
     default:
@@ -341,10 +349,9 @@ void MainWindow::onResoueceChanged(int index)
     }
 }
 
-
-void MainWindow::foundDevice(QString *name){
+void MainWindow::foundDevice(){
     validDFUDevice = true;
-    appendStatus(QString("DFU device found - %1").arg(*name));
+    appendStatus(QString("DFU device found"));
     if(currentOperation == DetectTX){
         setOperation(BurnFirmware);
     }

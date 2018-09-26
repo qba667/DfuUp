@@ -55,7 +55,7 @@ private slots:
     void onResoueceChanged(int index);
     void actionTriggered();
     //DFU
-    void foundDevice(QString *string);
+    void foundDevice();
     void lostDevice();
     void onDfuDone(bool success, const QString& message);
     void onDfuProgress(uint address, uint percent);

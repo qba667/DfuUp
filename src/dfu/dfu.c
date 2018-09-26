@@ -18,7 +18,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <usb.h>
+#include <libusb-1.0/libusb.h>
 
 #include "dfu.h"
 
@@ -81,54 +81,54 @@ const char* dfu_state_to_string( int state )
 }
 
 
-int dfu_detach(usb_dev_handle *dev, uint16_t iface, uint16_t wTimeout)
+int dfu_detach(libusb_device_handle *dev, uint16_t iface, uint16_t wTimeout)
 {
-	return usb_control_msg(dev, 
-			USB_ENDPOINT_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+    return libusb_control_transfer(dev,
+            LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
 			DFU_DETACH, wTimeout, iface, NULL, 0, 
 			USB_DEFAULT_TIMEOUT);
 }
 
-int dfu_dnload(usb_dev_handle *dev, uint16_t iface, 
+int dfu_dnload(libusb_device_handle *dev, uint16_t iface,
 		 uint16_t wBlockNum, void *data, uint16_t size)
 {
-	return usb_control_msg(dev, 
-			USB_ENDPOINT_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+    return libusb_control_transfer(dev,
+            LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
 			DFU_DNLOAD, wBlockNum, iface, data, size, 
 			USB_DEFAULT_TIMEOUT);
 }
 
-int dfu_upload(usb_dev_handle *dev, uint16_t iface, 
+int dfu_upload(libusb_device_handle *dev, uint16_t iface,
 		 uint16_t wBlockNum, void *data, uint16_t size)
 {
-	return usb_control_msg(dev, 
-			USB_ENDPOINT_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+    return libusb_control_transfer(dev,
+            LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
 			DFU_DNLOAD, wBlockNum, iface, data, size, 
 			USB_DEFAULT_TIMEOUT);
 }
 
-int dfu_getstatus(usb_dev_handle *dev, uint16_t iface, dfu_status *status)
+int dfu_getstatus(libusb_device_handle *dev, uint16_t iface, dfu_status *status)
 {
-	return usb_control_msg(dev, 
-			USB_ENDPOINT_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+    return libusb_control_transfer(dev,
+            LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
 			DFU_GETSTATUS, 0, iface, (void*)status, sizeof(dfu_status), 
 			USB_DEFAULT_TIMEOUT);
 }
 
-int dfu_clrstatus(usb_dev_handle *dev, uint16_t iface)
+int dfu_clrstatus(libusb_device_handle *dev, uint16_t iface)
 {
-	return usb_control_msg(dev, 
-			USB_ENDPOINT_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+    return libusb_control_transfer(dev,
+            LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
 			DFU_CLRSTATUS, 0, iface, NULL, 0, USB_DEFAULT_TIMEOUT);
 }
 
-int dfu_getstate(usb_dev_handle *dev, uint16_t iface)
+int dfu_getstate(libusb_device_handle *dev, uint16_t iface)
 {
 	int i;
 	uint8_t state;
 	do {
-		i = usb_control_msg(dev, 
-			USB_ENDPOINT_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+        i = libusb_control_transfer(dev,
+            LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
 			DFU_GETSTATE, 0, iface, &state, 1, USB_DEFAULT_TIMEOUT);
 	} while(i == 0);
 
@@ -138,15 +138,64 @@ int dfu_getstate(usb_dev_handle *dev, uint16_t iface)
 		return i;
 }
 
-int dfu_abort(usb_dev_handle *dev, uint16_t iface)
+int dfu_abort(libusb_device_handle *dev, uint16_t iface)
 {
-	return usb_control_msg(dev, 
-			USB_ENDPOINT_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+    return libusb_control_transfer(dev,
+            LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
 			DFU_ABORT, 0, iface, NULL, 0, USB_DEFAULT_TIMEOUT);
 }
 
+int dfu_make_idle(libusb_device_handle *dev, uint16_t iface, const uint8_t initial_abort ) {
+    dfu_status status;
+    int32_t retries = 4;
 
-int dfu_makeidle(usb_dev_handle *dev, uint16_t iface)
+    if( initial_abort != 0 ) {
+        dfu_abort( dev, iface );
+    }
+
+    while( 0 < retries ) {
+        if( 0 != dfu_getstatus(dev, iface, &status) ) {
+            dfu_clrstatus(dev, iface);
+            continue;
+        }
+
+        switch( status.bState ) {
+            case STATE_DFU_IDLE:
+                if( DFU_STATUS_OK == status.bStatus ) {
+                    return 0;
+                }
+                /* We need the device to have the DFU_STATUS_OK status. */
+                dfu_clrstatus(dev, iface);
+                break;
+
+            case STATE_DFU_DOWNLOAD_SYNC:   /* abort -> idle */
+            case STATE_DFU_DOWNLOAD_IDLE:   /* abort -> idle */
+            case STATE_DFU_MANIFEST_SYNC:   /* abort -> idle */
+            case STATE_DFU_UPLOAD_IDLE:     /* abort -> idle */
+            case STATE_DFU_DOWNLOAD_BUSY:   /* abort -> error */
+            case STATE_DFU_MANIFEST:        /* abort -> error */
+                dfu_abort( dev, iface );
+                break;
+
+            case STATE_DFU_ERROR:
+                dfu_clrstatus( dev, iface );
+                break;
+
+            case STATE_APP_IDLE:
+                dfu_detach( dev, iface, DFU_DETACH_TIMEOUT );
+                break;
+
+            case STATE_APP_DETACH:
+            case STATE_DFU_MANIFEST_WAIT_RESET:
+                libusb_reset_device( dev );
+                return 1;
+        }
+
+        retries--;
+    }
+    return -2;
+}
+int dfu_makeidle(libusb_device_handle *dev, uint16_t iface)
 {
 	int i;
 	dfu_status status;
@@ -182,7 +231,7 @@ int dfu_makeidle(usb_dev_handle *dev, uint16_t iface)
 
 		    case STATE_APP_DETACH:
 		    case STATE_DFU_MANIFEST_WAIT_RESET:
-			usb_reset(dev);
+            libusb_reset_device(dev);
 			return -1;
 
 		    default:

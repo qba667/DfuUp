@@ -52,13 +52,13 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 RESOURCES += \
     resources.qrc
 
-win32: LIBS += -L$$PWD/../libusb-win32/lib/gcc -llibusb
-unix: LIBS += -L/usr/local/lib -lusb
+win32: LIBS += -L$$PWD/../libusb-1.0.22/MinGW32/static -llibusb-1.0
+unix: LIBS += -L/usr/local/lib -lusb-1.0
 
-win32: INCLUDEPATH += $$PWD/../libusb-win32/include
+win32: INCLUDEPATH += $$PWD/../libusb-1.0.22/include
 
-win32:!win32-g++: DEPENDPATH += $$PWD/../libusb-win32/msvc/static
-else:win32-g++: DEPENDPATH += $$PWD/../libusb-win32/lib/gcc
+win32:!win32-g++: DEPENDPATH += $$PWD/../libusb-1.0.22/MS32/static
+else:win32-g++: DEPENDPATH += $$PWD/../llibusb-1.0.22/MinGW32/static
 
-win32:!win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-win32/lib/msvc/libusb.lib
-else:win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-win32/lib/gcc/libusb.a
+win32:!win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-1.0.22/MS32/static/libusb-1.0.lib
+else:win32-g++: PRE_TARGETDEPS += $$PWD/../libusb-1.0.22/MinGW32/static/libusb-1.0.a

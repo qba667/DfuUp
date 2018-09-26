@@ -33,23 +33,18 @@ class DFUManager : public QObject
 public:
     explicit DFUManager(QObject *parent = nullptr);
     ~DFUManager();
-    uint get_flash_size();
-
+    const uint flash_size = 0x200000;
 private:
     QTimer* timer;
-    struct usb_device *dev;
-    struct usb_dev_handle *handle;
-    uint16_t iface;
-    int state;
-    uint block_size;
-    QMutex flash_size_mutex;
-    uint flash_size;
-
-    struct usb_device *findDev(void);
-    struct usb_dev_handle *getDFUIface(struct usb_device *dev, uint16_t *interface, int* alternate);
-
+    struct libusb_device *dev;
+    struct libusb_device_handle *handle;
+    uint16_t interface;
+    char* deviceName;
+    const uint block_size = 2048;
+    bool findDev(void);
+    int32_t findDFUInterface(struct libusb_device *device,  const uint8_t bNumConfigurations);
 signals:
-    void foundDevice(QString *string);
+    void foundDevice();
     void lostDevice();
 
     void dfuDone(bool success, const QString& message);
@@ -66,7 +61,8 @@ public slots:
 public slots:
 
 private:
-    const QString TEXT_ERROR_WHILE_CLEARING = "Error clearing chip";
+    const QString TEXT_ERROR_WHILE_CLEARING = "Error clearing chip %1";
+    const QString TEXT_ERROR_WHILE_WRITING = "Error writting chip %1";
     const QString TEXT_ERROR_WRITE_OK = "Flash programmed";
 };
 

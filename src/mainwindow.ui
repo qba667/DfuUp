@@ -25,6 +25,9 @@
     <height>350</height>
    </size>
   </property>
+  <property name="acceptDrops">
+   <bool>false</bool>
+  </property>
   <property name="windowTitle">
    <string>NV14 Updater</string>
   </property>
@@ -38,6 +41,9 @@
    <locale language="English" country="UnitedStates"/>
   </property>
   <widget class="QWidget" name="centralWidget">
+   <property name="acceptDrops">
+    <bool>false</bool>
+   </property>
    <property name="styleSheet">
     <string notr="true">#centralWidget {
 background-image: url(:/resources/resources/bg.png);

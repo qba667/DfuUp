@@ -22,28 +22,26 @@
 #include <QDebug>
 #include <QFile>
 
-#include "usb.h"
+#include <libusb-1.0/libusb.h>
+
 #include "dfu/dfu.h"
 #include "dfu/stm32mem.h"
+
 
 DFUManager::DFUManager(QObject *parent) :
     QObject(parent)
 {
-    usb_init();
+    deviceName = new char[1024];
     handle = nullptr;
     timer = nullptr;
-    block_size = 1024;
-    flash_size_mutex.lock();
-    flash_size = 0x20000; /* 128kb */
-    flash_size_mutex.unlock();
 }
 
 DFUManager::~DFUManager()
 {
     if (handle) {
         qDebug() << "Releasing interface on delete.";
-        usb_release_interface(handle, iface);
-        usb_close(handle);
+        libusb_release_interface(handle, interface);
+        libusb_close(handle);
         handle = nullptr;
     }
 }
@@ -51,10 +49,12 @@ DFUManager::~DFUManager()
 void DFUManager::start()
 {
     findIFace();
-    timer = new QTimer(this);
-    timer->setInterval(5000);
-    connect(timer, SIGNAL(timeout()), this, SLOT(findIFace()));
-    timer->start();
+    if(!handle){
+        timer = new QTimer(this);
+        timer->setInterval(5000);
+        connect(timer, SIGNAL(timeout()), this, SLOT(findIFace()));
+        timer->start();
+    }
 }
 void DFUManager::stop()
 {
@@ -66,204 +66,160 @@ void DFUManager::stop()
 
 void DFUManager::findIFace()
 {
-    QString *deviceName;
-
     qDebug() << "Releasing Interface...";
 
     if (handle) {
-        usb_release_interface(handle, iface);
-        usb_close(handle);
+        libusb_release_interface(handle, interface);
+        libusb_close(handle);
         handle = nullptr;
     }
     qDebug() << "Trying to find DFU devices...";
 
 
-    if(!(dev = findDev())) {
+    if(!findDev()) {
         qDebug() << "FATAL: No compatible device found!\n";
         emit lostDevice();
         return;
     }
 
-    int alternate = 0;
-    handle = getDFUIface(dev, &iface, &alternate);
-    if(!handle) {
-        qDebug() << "FATAL: No compatible device found!\n";
-        emit lostDevice();
-        return;
-    }
+    int state = dfu_getstate(handle, interface);
 
-    //dfu_makeidle(handle, iface);
-
-    state = dfu_getstate(handle, iface);
     if((state < 0) || (state == STATE_APP_IDLE)) {
         qDebug() << "Resetting device in firmware upgrade mode...";
-        dfu_detach(handle, iface, 1000);
-        usb_release_interface(handle, iface);
-        usb_close(handle);
+        dfu_detach(handle, interface, 1000);
+        libusb_release_interface(handle, interface);
+        libusb_close(handle);
         handle = nullptr;
         emit lostDevice();
         return;
     }
 
-    qDebug() << "Found device at " << dev->bus->dirname << ":" << dev->filename;
-
-    deviceName = new QString("Found device at ");
-    deviceName->append(dev->bus->dirname);
-    deviceName->append(":");
-    deviceName->append(dev->filename);
-
-    emit foundDevice(deviceName);
+    qDebug() << "Found DFU device " << deviceName;
+    emit foundDevice();
 }
 
-struct usb_device *DFUManager::findDev()
+bool DFUManager::findDev()
 {
-    struct usb_bus *bus;
-    struct usb_device *dev;
-    struct usb_dev_handle *handle;
-    char man[40];
-    char prod[40];
-    char buffer[512];
-    usb_find_busses();
-    usb_find_devices();
+    extern libusb_context *usbcontext;
+    libusb_device **list;
+    libusb_device_handle *handle;
+    libusb_device *device;
+    ssize_t i,devicecount;
+    devicecount = libusb_get_device_list( usbcontext, &list );
 
-    for(bus = usb_get_busses(); bus; bus = bus->next) {
-        for(dev = bus->devices; dev; dev = dev->next) {
-            /* Check for ST Microelectronics vendor ID */
-            if (dev->descriptor.idVendor != 0x483 && dev->descriptor.idVendor != 0x1d5) continue;
-            handle = usb_open(dev);
-            usb_get_string_simple(handle, dev->descriptor.iManufacturer, man, sizeof(man));
-            usb_get_string_simple(handle, dev->descriptor.iProduct, prod, sizeof(prod));
+    for( i = 0; i < devicecount; i++ ) {
+        device = list[i];
+        struct libusb_device_descriptor descriptor;
+        if( libusb_get_device_descriptor(device, &descriptor) ) {
+            qDebug() <<  "Failed in libusb_get_device_descriptor";
+            break;
+        }
 
-#if 1
-            sprintf(buffer, "%s:%s [%04X:%04X] %s : %s\n", bus->dirname, dev->filename, dev->descriptor.idVendor, dev->descriptor.idProduct, man, prod);
-            qDebug() << buffer;
-#endif
-            usb_close(handle);
-            if (dev->descriptor.idProduct == 0xDF11) {
-                block_size = 1024;
-                flash_size_mutex.lock();
-                flash_size = 0x200000; /* 2MB */
-                flash_size_mutex.unlock();
-                return dev;
+        sprintf(deviceName, "Device [%04X:%04X] ", descriptor.idVendor, descriptor.idProduct);
+        if (descriptor.idVendor != 0x483 && descriptor.idVendor != 0x1d5) continue;
+        if (descriptor.idProduct != 0xDF11) continue;
+        qDebug() << "STM 32 Device found (F4)";
+
+        int32_t interface = findDFUInterface(device, descriptor.bNumConfigurations);
+        if(interface >= 0) {    /* The interface is valid. */
+            if(libusb_open(device, &handle)==0) {
+                if(libusb_set_configuration(handle, 1)==0) {
+                    if(libusb_claim_interface(handle, interface)==0)
+                    {
+
+                                //dfu_makeidle(handle, static_cast<uint16_t>(interface))== 0
+                        if(dfu_make_idle(handle, static_cast<uint16_t>(interface), 1)){
+                            libusb_free_device_list( list, 1 );
+                            this->dev = device;
+                            this->interface = static_cast<uint16_t>(interface);
+                            this->handle = handle;
+                            return true;
+                        }
+                        libusb_free_device_list( list, 1 );
+                        libusb_release_interface(handle, interface);
+
+                    }
+                }
+                libusb_close(handle);
             }
         }
     }
-    return nullptr;
+    deviceName[0] = 0;
+    return false;
 }
 
-struct usb_dev_handle *DFUManager::getDFUIface(struct usb_device *dev, uint16_t *interface, int* alternate)
-{
-    int i, j, k;
-    struct usb_config_descriptor *config;
-    struct usb_interface_descriptor *iface;
+int32_t DFUManager::findDFUInterface(struct libusb_device *device,  const uint8_t bNumConfigurations) {
+    int32_t c,i,s;
 
-    usb_dev_handle *handle;
-    int error = 0;
-    for(i = 0; i < dev->descriptor.bNumConfigurations; i++) {
-        config = &dev->config[i];
+    /* Loop through all of the configurations */
+    for( c = 0; c < bNumConfigurations; c++ ) {
+        struct libusb_config_descriptor *config;
 
-        for(j = 0; j < config->bNumInterfaces; j++) {
-            for(k = *alternate; k < config->interface[j].num_altsetting; k++) {
-                iface = &config->interface[j].altsetting[k];
-                //this will get first valid interface
-                if((iface->bInterfaceClass == 0xFE) && (iface->bInterfaceSubClass = 0x01)) {
-                    *interface = iface->bInterfaceNumber;
-                    *alternate = config->interface[j].num_altsetting;
-                    for(int attempt = 0; attempt <3; attempt++){
-                        handle = usb_open(dev);
-    #if 0
-                        qDebug() << QString("Setting Configuration %1...").arg(i);
-                        error = usb_set_configuration(handle, i);
-                        if (error < 0) qDebug() << QString("Error %1...").arg(error);
-    #endif
-                        qDebug() << QString("Claiming USB DFU Interface %1...").arg(j);
-                        error = usb_claim_interface(handle, j);
-                        if (error < 0) qDebug() << QString("Error %1...").arg(error);
-                        qDebug() << QString("Setting Alternate Setting  %1...").arg(k);
-                        error = usb_set_altinterface(handle, k);
-                        if (error < 0) qDebug() << QString("Error %1...").arg(error);
-                        qDebug() << "Determining device status: ";
-                        dfu_status status;
-                        error = dfu_getstatus(handle, *interface, &status);
-                        if (error < 0) qDebug() << QString("Error %1...").arg(error);
-                        qDebug() << QString("Device state %1 status %2").arg(status.bState).arg(status.bStatus);
-                        qDebug() << QString("Waiting %1...").arg(status.bwPollTimeout);
-                        if(status.bwPollTimeout > 500) status.bwPollTimeout = 500;
-                        Sleep(status.bwPollTimeout);
+        if( libusb_get_config_descriptor(device, c, &config) ) {
+            qDebug() << "can't get_config_descriptor: %d\n";
+            return -1;
+        }
 
-                        switch (status.bState) {
-                            case STATE_APP_IDLE:
-                            case STATE_APP_DETACH:
-                                qDebug() <<"Device still in Runtime Mode!";
-                                break;
-                            case STATE_DFU_ERROR:
-                                qDebug() << "dfuERROR, clearing status";
-                                if(dfu_clrstatus(handle, *interface)< 0)   qDebug() <<"error clear_status";
-                                usb_close(handle);
-                                continue;
-                            case STATE_DFU_DOWNLOAD_IDLE:
-                            case STATE_DFU_UPLOAD_IDLE:
-                                qDebug() << "aborting previous incomplete transfer\n";
-                                if(dfu_abort(handle, *interface) <0) qDebug() << "can't send DFU_ABORT";
-                                usb_close(handle);
-                                continue;
-                            case STATE_DFU_IDLE:
-                                qDebug() << "dfuIDLE, continuing\n";
-                                return handle;
-                            default:
-                                break;
-                            }
+        qDebug() << QString("config %1: maxpower=%2*2 mA\n").arg(c).arg(config->MaxPower);
 
-                            if (DFU_STATUS_OK != status.bStatus ) {
-                                qDebug() << QString("WARNING: DFU Status: '%1'").arg(status.bStatus);
-                                /* Clear our status & try again. */
-                                if(dfu_clrstatus(handle, *interface) < 0)
-                                    qDebug() << "USB communication error";
+        /* Loop through all of the interfaces */
+        for( i = 0; i < config->bNumInterfaces; i++ ) {
+            struct libusb_interface interface;
+            interface = config->interface[i];
+            qDebug() << QString("interface %1").arg(i);
+            /* Loop through all of the settings */
+            for( s = 0; s < interface.num_altsetting; s++ ) {
+                struct libusb_interface_descriptor setting;
+                setting = interface.altsetting[s];
+                qDebug() << QString("setting %1: class:%2, subclass %3, protocol:%3")
+                            .arg(s).arg(setting.bInterfaceClass)
+                            .arg(setting.bInterfaceSubClass)
+                            .arg(setting.bInterfaceProtocol);
 
-                                if(dfu_getstatus(handle, *interface, &status))
-                                    qDebug() << "USB communication error";
-
-                                if (DFU_STATUS_OK != status.bStatus) qDebug() << QString("Status is not OK: %1").arg(status.bStatus);
-                                Sleep(status.bwPollTimeout);
-                            }
-
-                            usb_close(handle);
-                    }
-
+                /* Check if the interface is a DFU interface */
+                if(USB_CLASS_APP_SPECIFIC == setting.bInterfaceClass && DFU_SUBCLASS == setting.bInterfaceSubClass)
+                {
+                    qDebug() << QString("Found DFU Interface: %1").arg(setting.bInterfaceNumber);
+                    libusb_free_config_descriptor( config );
+                    return setting.bInterfaceNumber;
                 }
             }
         }
+
+        libusb_free_config_descriptor( config );
     }
-    return nullptr;
+
+    return -1;
 }
+
 
 void DFUManager::flash(uint address, char* buffer, uint length)
 {
     if(timer!=nullptr) timer->stop();
+    address = 0x08000000;
     //tbd create copy
-    dfu_makeidle(handle, iface);
+    int status;
+    dfu_make_idle(handle, static_cast<uint16_t>(interface), 1);
     for (uint offset = 0U; offset < length; offset += block_size) {
         emit dfuProgress(address + offset, (offset*100)/length);
-        if (stm32_mem_erase(handle, iface, address + offset) != 0) {
-            emit dfuDone(false, TEXT_ERROR_WHILE_CLEARING);
-            if(timer!=nullptr) timer->start();
+        status = stm32_mem_erase(handle, interface, address + offset);
+        if (status != 0) {
+            emit dfuDone(false, TEXT_ERROR_WHILE_CLEARING.arg(status));
+            break;
         }
-        stm32_mem_write(handle, iface, static_cast<void*>(buffer+offset), static_cast<int>(block_size));
+        status = stm32_mem_write(handle, interface, static_cast<void*>(buffer+offset), static_cast<int>(block_size));
+        if (status != 0) {
+            emit dfuDone(false, TEXT_ERROR_WHILE_WRITING.arg(status));
+            break;
+        }
     }
 
-    stm32_mem_manifest(handle, iface);
-    usb_release_interface(handle, iface);
-    usb_close(handle);
+
+
+    stm32_mem_manifest(handle, interface);
+    libusb_release_interface(handle, interface);
+    libusb_close(handle);
     handle = nullptr;
     emit dfuDone(true, TEXT_ERROR_WRITE_OK);
     if(timer!=nullptr) timer->start();
-}
-
-uint DFUManager::get_flash_size()
-{
-    uint size;
-    flash_size_mutex.lock();
-    size = flash_size;
-    flash_size_mutex.unlock();
-    return size;
 }
