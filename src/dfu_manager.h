@@ -37,9 +37,7 @@ public:
 private:
     QTimer* timer;
     struct libusb_device *dev;
-    struct libusb_device_handle *handle;
-    uint16_t interface;
-    char* deviceName;
+    dfu_device_t* dfu_device;
     const uint block_size = 2048;
     bool findDev(void);
     int32_t findDFUInterface(struct libusb_device *device,  const uint8_t bNumConfigurations);

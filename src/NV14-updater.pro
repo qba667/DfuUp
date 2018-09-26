@@ -31,7 +31,8 @@ SOURCES += \
     remotefileinfo.cpp \
     dfu/dfu.c \
     dfu/stm32mem.c \
-    dfu_manager.cpp
+    dfu_manager.cpp \
+    dfu/intel_hex.c
 
 HEADERS += \
         mainwindow.h \
@@ -39,7 +40,9 @@ HEADERS += \
     remotefileinfo.h \
     dfu/dfu.h \
     dfu/stm32mem.h \
-    dfu_manager.h
+    dfu_manager.h \
+    dfu/intel_hex.h \
+    dfu/dfu-bool.h
 
 FORMS += \
         mainwindow.ui

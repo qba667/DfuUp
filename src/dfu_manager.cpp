@@ -31,25 +31,28 @@
 DFUManager::DFUManager(QObject *parent) :
     QObject(parent)
 {
-    deviceName = new char[1024];
-    handle = nullptr;
+
+    //deviceName = new char[1024];
+    dfu_device = new dfu_device_t();
+    dfu_device->handle = nullptr;
+    dfu_device->interface = 0;
     timer = nullptr;
 }
 
 DFUManager::~DFUManager()
 {
-    if (handle) {
+    if (dfu_device->handle) {
         qDebug() << "Releasing interface on delete.";
-        libusb_release_interface(handle, interface);
-        libusb_close(handle);
-        handle = nullptr;
+        libusb_release_interface(dfu_device->handle, dfu_device->interface);
+        libusb_close(dfu_device->handle);
+        dfu_device->handle = nullptr;
     }
 }
 
 void DFUManager::start()
 {
     findIFace();
-    if(!handle){
+    if(!dfu_device->handle){
         timer = new QTimer(this);
         timer->setInterval(5000);
         connect(timer, SIGNAL(timeout()), this, SLOT(findIFace()));
@@ -68,33 +71,40 @@ void DFUManager::findIFace()
 {
     qDebug() << "Releasing Interface...";
 
-    if (handle) {
-        libusb_release_interface(handle, interface);
-        libusb_close(handle);
-        handle = nullptr;
+    if (dfu_device->handle) {
+        libusb_release_interface(dfu_device->handle, dfu_device->interface);
+        libusb_close(dfu_device->handle);
+        dfu_device->handle = nullptr;
     }
     qDebug() << "Trying to find DFU devices...";
 
 
+    this->dev = dfu_device_init(0x483, 0xDF11, 0,0, dfu_device, 1, 1);
+    if(this->dev == nullptr){
+        qDebug() << "FATAL: No compatible device found!\n";
+        emit lostDevice();
+        return;
+    }
+/*
     if(!findDev()) {
         qDebug() << "FATAL: No compatible device found!\n";
         emit lostDevice();
         return;
     }
-
-    int state = dfu_getstate(handle, interface);
+*/
+    int state = dfu_get_state(dfu_device);
 
     if((state < 0) || (state == STATE_APP_IDLE)) {
         qDebug() << "Resetting device in firmware upgrade mode...";
-        dfu_detach(handle, interface, 1000);
-        libusb_release_interface(handle, interface);
-        libusb_close(handle);
-        handle = nullptr;
+        dfu_detach(dfu_device, 1000);
+        libusb_release_interface(dfu_device->handle, dfu_device->interface);
+        libusb_close(dfu_device->handle);
+        dfu_device->handle = nullptr;
         emit lostDevice();
         return;
     }
 
-    qDebug() << "Found DFU device " << deviceName;
+    qDebug() << "Found DFU device ";
     emit foundDevice();
 }
 
@@ -115,7 +125,7 @@ bool DFUManager::findDev()
             break;
         }
 
-        sprintf(deviceName, "Device [%04X:%04X] ", descriptor.idVendor, descriptor.idProduct);
+        //sprintf(deviceName, "Device [%04X:%04X] ", descriptor.idVendor, descriptor.idProduct);
         if (descriptor.idVendor != 0x483 && descriptor.idVendor != 0x1d5) continue;
         if (descriptor.idProduct != 0xDF11) continue;
         qDebug() << "STM 32 Device found (F4)";
@@ -126,13 +136,15 @@ bool DFUManager::findDev()
                 if(libusb_set_configuration(handle, 1)==0) {
                     if(libusb_claim_interface(handle, interface)==0)
                     {
-
-                                //dfu_makeidle(handle, static_cast<uint16_t>(interface))== 0
-                        if(dfu_make_idle(handle, static_cast<uint16_t>(interface), 1)){
+                         dfu_device_t* dev = new dfu_device_t();
+                         dev->handle = handle;
+                         dev->interface = interface;
+                        if(dfu_make_idle(dev, 1)){
                             libusb_free_device_list( list, 1 );
                             this->dev = device;
-                            this->interface = static_cast<uint16_t>(interface);
-                            this->handle = handle;
+                            this->dfu_device = dev;
+                            //this->interface = static_cast<uint16_t>(interface);
+                            //this->handle = handle;
                             return true;
                         }
                         libusb_free_device_list( list, 1 );
@@ -144,7 +156,7 @@ bool DFUManager::findDev()
             }
         }
     }
-    deviceName[0] = 0;
+    //deviceName[0] = 0;
     return false;
 }
 
@@ -198,7 +210,14 @@ void DFUManager::flash(uint address, char* buffer, uint length)
     if(timer!=nullptr) timer->stop();
     address = 0x08000000;
     //tbd create copy
-    int status;
+    int status = stm32_erase_flash(dfu_device, 0);
+    if(DFU_STATUS_OK == status){
+         emit dfuDone(false, TEXT_ERROR_WHILE_CLEARING.arg(status));
+    }else{
+          emit dfuDone(true, TEXT_ERROR_WRITE_OK);
+    }
+
+    /*
     dfu_make_idle(handle, static_cast<uint16_t>(interface), 1);
     for (uint offset = 0U; offset < length; offset += block_size) {
         emit dfuProgress(address + offset, (offset*100)/length);
@@ -217,9 +236,10 @@ void DFUManager::flash(uint address, char* buffer, uint length)
 
 
     stm32_mem_manifest(handle, interface);
-    libusb_release_interface(handle, interface);
-    libusb_close(handle);
-    handle = nullptr;
-    emit dfuDone(true, TEXT_ERROR_WRITE_OK);
+    */
+    libusb_release_interface(dfu_device->handle, dfu_device->interface);
+    libusb_close(dfu_device->handle);
+    dfu_device->handle = nullptr;
+
     if(timer!=nullptr) timer->start();
 }

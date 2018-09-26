@@ -224,7 +224,7 @@ void MainWindow::setOperation(Operation operation){
     case DownloadFirmware:
         setButton(Text_DOWNLOAD_FW, styleBlue, &img_reload, true);
         ui->fwList->setVisible(true);
-        ui->fwList->setEnabled(false);
+        ui->fwList->setEnabled(true);
         break;
     case DownloadArchive:
         setButton(Text_DOWNLOAD_ARCHIVE, styleBlue, &img_reload, true);

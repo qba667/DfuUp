@@ -21,14 +21,106 @@
 #define __STM32MEM_H
 
 #include <libusb-1.0/libusb.h>
+#include "dfu/dfu.h"
 
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
-int stm32_mem_erase(libusb_device_handle *dev, uint16_t iface, uint32_t addr);
-int stm32_mem_write(libusb_device_handle *dev, uint16_t iface, void *data, int size);
-int stm32_mem_manifest(libusb_device_handle *dev, uint16_t iface);
+#define STM32_FLASH_OFFSET 0x08000000
+
+
+typedef enum {
+  mem_st_sector0 = 0,
+  mem_st_sector1,
+  mem_st_sector2,
+  mem_st_sector3,
+  mem_st_sector4,
+  mem_st_sector5,
+  mem_st_sector6,
+  mem_st_sector7,
+  mem_st_sector8,
+  mem_st_sector9,
+  mem_st_sector10,
+  mem_st_sector11,
+  mem_st_system,
+  mem_st_otp_area,
+  mem_st_option_bytes,
+  mem_st_all,
+} stm32_mem_sectors;
+
+enum return_codes_enum {
+    SUCCESS = 0,
+    UNSPECIFIED_ERROR,                  /* general error */
+    ARGUMENT_ERROR,                     /* invalid command for target etc. */
+    DEVICE_ACCESS_ERROR,                /* security bit etc. */
+    BUFFER_INIT_ERROR,                  /* hex files problems etc. */
+    FLASH_READ_ERROR,
+    FLASH_WRITE_ERROR,
+    VALIDATION_ERROR_IN_REGION,
+    VALIDATION_ERROR_OUTSIDE_REGION };
+
+
+#define STM32_MEM_UNIT_NAMES "Sector 0", "Sector 1", "Sector 2", "Sector 3", \
+  "Sector 4", "Sector 5", "Sector 6", "Sector 7", "Sector 8", "Sector 9", \
+  "Sector 10", "Sector 11", "System Memory", "OTP Area", "Option Bytes", "all"
+
+#define STM32_READ_PROT_ERROR   -10
+
+
+int32_t stm32_erase_flash( dfu_device_t *device, dfu_bool quiet );
+  /*  mass erase flash
+   *  device  - the usb_dev_handle to communicate with
+   *  returns status DFU_STATUS_OK if ok, anything else on error
+   */
+
+int32_t stm32_page_erase( dfu_device_t *device, uint32_t address,
+    dfu_bool quiet );
+  /* erase a page of memory (provide the page address) */
+
+int32_t stm32_start_app( dfu_device_t *device, dfu_bool quiet );
+  /* Reset the registers to default reset values and start application
+   */
+
+int32_t stm32_read_flash( dfu_device_t *device,
+              intel_buffer_in_t *buin,
+              uint8_t mem_segment,
+              const dfu_bool quiet);
+  /* read the flash from buin->info.data_start to data_end and place
+   * in buin.data. mem_segment is the segment of memory from the
+   * stm32_memory_unit_enum.
+   */
+
+int32_t stm32_write_flash( dfu_device_t *device, intel_buffer_out_t *bout,
+    const dfu_bool eeprom, const dfu_bool force, const dfu_bool hide_progress );
+  /* Flash data from the buffer to the main program memory on the device.
+   * buffer contains the data to flash where buffer[0] is aligned with memory
+   * address zero (which could be inside the bootloader and unavailable).
+   * buffer[start / end] correspond to the start / end of available memory
+   * outside the bootloader.
+   * flash_page_size is the size of flash pages - used for alignment
+   * eeprom bool tells if you want to flash to eeprom or flash memory
+   * hide_progress bool sets whether to display progress
+   */
+
+int32_t stm32_get_commands( dfu_device_t *device );
+  /* @brief get the commands list, should be length 4
+   * @param device pointer
+   * @retrn 0 on success
+   */
+
+int32_t stm32_get_configuration( dfu_device_t *device );
+  /* @brief get the configuration structure
+   * @param device pointer
+   * @retrn 0 on success, negative for error
+   */
+
+int32_t stm32_read_unprotect( dfu_device_t *device, dfu_bool quiet );
+  /* @brief unprotect the device (triggers a mass erase)
+   * @param device pointer
+   * @retrn 0 on success
+   */
+
 
 #if defined(__cplusplus)
 } /* extern "C" */

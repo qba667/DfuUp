@@ -5,6 +5,7 @@
 extern "C" {
 #include <libusb-1.0/libusb.h>
 libusb_context *usbcontext;
+int debug;
 }
 #endif
 
