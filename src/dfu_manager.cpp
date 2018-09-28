@@ -32,11 +32,14 @@ DFUManager::DFUManager(QObject *parent) :
     QObject(parent)
 {
 
+    detectionTimer = new QTimer(this);
+    detectionTimer->setInterval(5000);
+    connect(detectionTimer, SIGNAL(timeout()), this, SLOT(onDetectionTick()));
+
     //deviceName = new char[1024];
     dfu_device = new dfu_device_t();
     dfu_device->handle = nullptr;
     dfu_device->interface = 0;
-    timer = nullptr;
 }
 
 DFUManager::~DFUManager()
@@ -47,28 +50,28 @@ DFUManager::~DFUManager()
         libusb_close(dfu_device->handle);
         dfu_device->handle = nullptr;
     }
+    detectionTimer->stop();
 }
 
 void DFUManager::start()
 {
-    findIFace();
+    onDetectionTick();
     if(!dfu_device->handle){
-        timer = new QTimer(this);
-        timer->setInterval(5000);
-        connect(timer, SIGNAL(timeout()), this, SLOT(findIFace()));
-        timer->start();
+        detectionTimer->start();
     }
 }
 void DFUManager::stop()
 {
-    if(timer!=nullptr){
-        timer->stop();
-        timer = nullptr;
-    }
+    detectionTimer->stop();
 }
 
-void DFUManager::findIFace()
+void DFUManager::onDetectionTick()
 {
+     if (dfu_device->handle) {
+         detectionTimer->stop();
+         return;
+     }
+
     qDebug() << "Releasing Interface...";
 
     if (dfu_device->handle) {
@@ -78,20 +81,13 @@ void DFUManager::findIFace()
     }
     qDebug() << "Trying to find DFU devices...";
 
-
     this->dev = dfu_device_init(0x483, 0xDF11, 0,0, dfu_device, 1, 1);
     if(this->dev == nullptr){
         qDebug() << "FATAL: No compatible device found!\n";
         emit lostDevice();
         return;
     }
-/*
-    if(!findDev()) {
-        qDebug() << "FATAL: No compatible device found!\n";
-        emit lostDevice();
-        return;
-    }
-*/
+
     int state = dfu_get_state(dfu_device);
 
     if((state < 0) || (state == STATE_APP_IDLE)) {
@@ -108,138 +104,77 @@ void DFUManager::findIFace()
     emit foundDevice();
 }
 
-bool DFUManager::findDev()
+void DFUManager::flash(uint startAddress, char* data, uint length)
 {
-    extern libusb_context *usbcontext;
-    libusb_device **list;
-    libusb_device_handle *handle;
-    libusb_device *device;
-    ssize_t i,devicecount;
-    devicecount = libusb_get_device_list( usbcontext, &list );
-
-    for( i = 0; i < devicecount; i++ ) {
-        device = list[i];
-        struct libusb_device_descriptor descriptor;
-        if( libusb_get_device_descriptor(device, &descriptor) ) {
-            qDebug() <<  "Failed in libusb_get_device_descriptor";
-            break;
-        }
-
-        //sprintf(deviceName, "Device [%04X:%04X] ", descriptor.idVendor, descriptor.idProduct);
-        if (descriptor.idVendor != 0x483 && descriptor.idVendor != 0x1d5) continue;
-        if (descriptor.idProduct != 0xDF11) continue;
-        qDebug() << "STM 32 Device found (F4)";
-
-        int32_t interface = findDFUInterface(device, descriptor.bNumConfigurations);
-        if(interface >= 0) {    /* The interface is valid. */
-            if(libusb_open(device, &handle)==0) {
-                if(libusb_set_configuration(handle, 1)==0) {
-                    if(libusb_claim_interface(handle, interface)==0)
-                    {
-                         dfu_device_t* dev = new dfu_device_t();
-                         dev->handle = handle;
-                         dev->interface = interface;
-                        if(dfu_make_idle(dev, 1)){
-                            libusb_free_device_list( list, 1 );
-                            this->dev = device;
-                            this->dfu_device = dev;
-                            //this->interface = static_cast<uint16_t>(interface);
-                            //this->handle = handle;
-                            return true;
-                        }
-                        libusb_free_device_list( list, 1 );
-                        libusb_release_interface(handle, interface);
-
-                    }
-                }
-                libusb_close(handle);
-            }
-        }
+    detectionTimer->stop();
+    int32_t status = UNSPECIFIED_ERROR;
+    if(startAddress < 0x08000000 || length > 0x00200000) {
+      emit dfuDone(TEXT_INVALID_PARAMS, false);
+      return;
     }
-    //deviceName[0] = 0;
-    return false;
-}
+    uint endAddress = startAddress + length;
+    uint numberOfPages = sizeof(stm32_sector_addresses)-1;
 
-int32_t DFUManager::findDFUInterface(struct libusb_device *device,  const uint8_t bNumConfigurations) {
-    int32_t c,i,s;
+    int firstPage = -1;
+    uint lastPage = 1;
+    //find pages
+    for(uint page = 0; page < numberOfPages ; page++){
+        uint pageStart = stm32_sector_addresses[page];
+        uint pageEnd =  stm32_sector_addresses[page+1];
 
-    /* Loop through all of the configurations */
-    for( c = 0; c < bNumConfigurations; c++ ) {
-        struct libusb_config_descriptor *config;
-
-        if( libusb_get_config_descriptor(device, c, &config) ) {
-            qDebug() << "can't get_config_descriptor: %d\n";
-            return -1;
-        }
-
-        qDebug() << QString("config %1: maxpower=%2*2 mA\n").arg(c).arg(config->MaxPower);
-
-        /* Loop through all of the interfaces */
-        for( i = 0; i < config->bNumInterfaces; i++ ) {
-            struct libusb_interface interface;
-            interface = config->interface[i];
-            qDebug() << QString("interface %1").arg(i);
-            /* Loop through all of the settings */
-            for( s = 0; s < interface.num_altsetting; s++ ) {
-                struct libusb_interface_descriptor setting;
-                setting = interface.altsetting[s];
-                qDebug() << QString("setting %1: class:%2, subclass %3, protocol:%3")
-                            .arg(s).arg(setting.bInterfaceClass)
-                            .arg(setting.bInterfaceSubClass)
-                            .arg(setting.bInterfaceProtocol);
-
-                /* Check if the interface is a DFU interface */
-                if(USB_CLASS_APP_SPECIFIC == setting.bInterfaceClass && DFU_SUBCLASS == setting.bInterfaceSubClass)
-                {
-                    qDebug() << QString("Found DFU Interface: %1").arg(setting.bInterfaceNumber);
-                    libusb_free_config_descriptor( config );
-                    return setting.bInterfaceNumber;
-                }
-            }
-        }
-
-        libusb_free_config_descriptor( config );
+        if(pageStart > endAddress) break; //page start after image
+        if(pageEnd < startAddress) continue; //page ends before image
+        if(firstPage == -1) firstPage = static_cast<int>(page);
+        lastPage = page;
     }
 
-    return -1;
-}
-
-
-void DFUManager::flash(uint address, char* buffer, uint length)
-{
-    if(timer!=nullptr) timer->stop();
-    address = 0x08000000;
-    //tbd create copy
-    int status = stm32_erase_flash(dfu_device, 0);
-    if(DFU_STATUS_OK == status){
-         emit dfuDone(false, TEXT_ERROR_WHILE_CLEARING.arg(status));
-    }else{
-          emit dfuDone(true, TEXT_ERROR_WRITE_OK);
+    if(firstPage == -1){
+        emit dfuDone(TEXT_INVALID_PARAMS, false);
+        return;
     }
-
-    /*
-    dfu_make_idle(handle, static_cast<uint16_t>(interface), 1);
-    for (uint offset = 0U; offset < length; offset += block_size) {
-        emit dfuProgress(address + offset, (offset*100)/length);
-        status = stm32_mem_erase(handle, interface, address + offset);
-        if (status != 0) {
-            emit dfuDone(false, TEXT_ERROR_WHILE_CLEARING.arg(status));
-            break;
-        }
-        status = stm32_mem_write(handle, interface, static_cast<void*>(buffer+offset), static_cast<int>(block_size));
-        if (status != 0) {
-            emit dfuDone(false, TEXT_ERROR_WHILE_WRITING.arg(status));
-            break;
+    emit progress(TEXT_CLEARING_STARTED, 0);
+    for(uint page = static_cast<uint>(firstPage); page <= lastPage ; page++){
+        emit progress(TEXT_CLEARING_PAGE_AT.arg(stm32_sector_addresses[page], 8, 16, QLatin1Char('0')), 0);
+        if((status = stm32_page_erase(dfu_device, stm32_sector_addresses[page], false))) {
+            emit dfuDone(TEXT_ERROR_CLEARING, false);
+            return;
         }
     }
+    emit progress(TEXT_CLEARING_DONE, 0);
+    emit progress(TEXT_BURNING_STARTED, 0);
+
+    uint32_t offset = 0;
+    uint32_t bytes;
 
 
+    if((status = stm32_set_address_ptr(dfu_device, startAddress))) {
+        emit dfuDone(TEXT_BURNING_ERROR.arg(status), false);
+        return;
+    }
 
-    stm32_mem_manifest(handle, interface);
-    */
+    dfu_set_transaction_num( 2 ); /* sets block offset 0 */
+
+
+    while( offset < length ) {
+        memset(buffer, 0xFF, TRANSFER_SIZE);
+        bytes = length - offset;
+        if(bytes > TRANSFER_SIZE) bytes = TRANSFER_SIZE;
+        memcpy(buffer, data + offset, bytes);
+        offset += TRANSFER_SIZE;
+        if( (status = stm32_write_block( dfu_device, TRANSFER_SIZE, buffer )) ) {
+            emit dfuDone(TEXT_BURNING_ERROR.arg(status), false);
+            return;
+        }
+        int p = static_cast<int>(((offset*100U)/length));
+        emit progress(TEXT_BURNING_FW_PROGRESS.arg(startAddress + offset, 8, 16, QLatin1Char('0')).arg(p), p);
+      }
+
+    stm32_start_app(dfu_device, false);
+
+    dfuDone(TEXT_BURNING_OK, true);
+
     libusb_release_interface(dfu_device->handle, dfu_device->interface);
     libusb_close(dfu_device->handle);
     dfu_device->handle = nullptr;
-
-    if(timer!=nullptr) timer->start();
+    emit lostDevice();
 }

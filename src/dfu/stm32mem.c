@@ -35,13 +35,13 @@ static inline int32_t stm32_get_status( dfu_device_t *device );
    * retrn  0 on status OK, -1 on status req fail, -2 on bad status
    */
 
-static int32_t stm32_set_address_ptr( dfu_device_t *device, uint32_t address );
+int32_t stm32_set_address_ptr( dfu_device_t *device, uint32_t address );
   /* @brief set the address pointer to a certain address
    * @param the address to set
    * @retrn 0 on success, negative on failure
    */
 
-static int32_t stm32_write_block( dfu_device_t *device,
+int32_t stm32_write_block( dfu_device_t *device,
                                   size_t xfer_len,
                                   uint8_t *buffer );
   /* flash the contents of memory into a block of memory.  it is assumed that
@@ -73,26 +73,6 @@ static int32_t stm32_erase( dfu_device_t *device, uint8_t *command,
 //___ V A R I A B L E S ______________________________________________________
 extern int debug;       /* defined in main.c */
 
-/* FIXME : these should be read from usb device descriptor because they are
- * device specififc */
-static const uint32_t stm32_sector_addresses[] = {
-  0x08000000,   /* sector  0,  16 kb */
-  0x08004000,   /* sector  1,  16 kb */
-  0x08008000,   /* sector  2,  16 kb */
-  0x0800C000,   /* sector  3,  16 kb */
-  0x08010000,   /* sector  4,  64 kb */
-  0x08020000,   /* sector  5, 128 kb */
-  0x08040000,   /* sector  6, 128 kb */
-  0x08060000,   /* sector  7, 128 kb */
-  0x08080000,   /* sector  8, 128 kb */
-  0x080A0000,   /* sector  9, 128 kb */
-  0x080C0000,   /* sector 10, 128 kb */
-  0x080E0000,   /* sector 11, 128 kb */
-  0x1FFF0000,   /* system memory, 30 kb */
-  0x1FFF7800,   /* OTP area, 528 bytes */
-  0x1FFFC000,   /* Option bytes, 16 bytes */
-};
-
 //___ F U N C T I O N S   ( P R I V A T E ) __________________________________
 static inline int32_t stm32_get_status( dfu_device_t *device ) {
   dfu_status_t status;
@@ -113,7 +93,7 @@ static inline int32_t stm32_get_status( dfu_device_t *device ) {
   return 0;
 }
 
-static int32_t stm32_set_address_ptr( dfu_device_t *device, uint32_t address ) {
+int32_t stm32_set_address_ptr( dfu_device_t *device, uint32_t address ) {
   TRACE( "%s( 0x%X )\n", __FUNCTION__, address );
   const uint8_t length = 5;
   int32_t status;
@@ -153,7 +133,7 @@ static int32_t stm32_set_address_ptr( dfu_device_t *device, uint32_t address ) {
   return 0;
 }
 
-static int32_t stm32_write_block( dfu_device_t *device,
+int32_t stm32_write_block( dfu_device_t *device,
                                   size_t xfer_len,
                                   uint8_t *buffer ) {
   TRACE( "%s( %p, %u, %p )\n", __FUNCTION__, device, xfer_len, buffer );
@@ -638,6 +618,7 @@ finally:
 
   return retval;
 }
+
 
 int32_t stm32_get_commands( dfu_device_t *device ) {
   TRACE("%s( %p )\n", __FUNCTION__, device);

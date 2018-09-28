@@ -26,6 +26,7 @@
 #include <QTimer>
 #include <QMutex>
 
+#define TRANSFER_SIZE (2048)
 
 class DFUManager : public QObject
 {
@@ -33,35 +34,34 @@ class DFUManager : public QObject
 public:
     explicit DFUManager(QObject *parent = nullptr);
     ~DFUManager();
-    const uint flash_size = 0x200000;
 private:
-    QTimer* timer;
+    QTimer* detectionTimer;
     struct libusb_device *dev;
     dfu_device_t* dfu_device;
-    const uint block_size = 2048;
-    bool findDev(void);
-    int32_t findDFUInterface(struct libusb_device *device,  const uint8_t bNumConfigurations);
+    uint8_t buffer[TRANSFER_SIZE];
 signals:
     void foundDevice();
     void lostDevice();
-
-    void dfuDone(bool success, const QString& message);
-    void dfuProgress(uint address, uint percentage);
-    
+    void dfuDone(const QString& message, bool success);
+    void progress(const QString& message, int progress);
 private slots:
-    void findIFace();//on timer
-
+    void onDetectionTick();
 public slots:
     void start();
     void stop();
     void flash(uint address, char* buffer, uint length);
 
-public slots:
-
 private:
-    const QString TEXT_ERROR_WHILE_CLEARING = "Error clearing chip %1";
-    const QString TEXT_ERROR_WHILE_WRITING = "Error writting chip %1";
-    const QString TEXT_ERROR_WRITE_OK = "Flash programmed";
+    const QString TEXT_INVALID_PARAMS = "Invalid parameters!";
+    const QString TEXT_CLEARING_STARTED = "Clearing chip...";
+    const QString TEXT_CLEARING_PAGE_AT = "Clearing page at 0x%1...";
+    const QString TEXT_CLEARING_DONE = "Clearing chip done.";
+    const QString TEXT_ERROR_CLEARING = "An error occurred while clearing chip!";
+
+    const QString TEXT_BURNING_STARTED = "Burning firmware...";
+    const QString TEXT_BURNING_FW_PROGRESS = "Burning at 0x%1 - %2%";
+    const QString TEXT_BURNING_ERROR = "An error [%1] occurred while writting!";
+    const QString TEXT_BURNING_OK = "Flash programmed";
 };
 
 #endif // DFU_MANAGER_H

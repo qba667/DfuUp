@@ -29,6 +29,7 @@ extern "C" {
 
 #define STM32_FLASH_OFFSET 0x08000000
 
+extern int fwUpdateProgress;
 
 typedef enum {
   mem_st_sector0 = 0,
@@ -48,6 +49,34 @@ typedef enum {
   mem_st_option_bytes,
   mem_st_all,
 } stm32_mem_sectors;
+
+static const uint32_t stm32_sector_addresses[] = {
+  0x08000000,   /* sector  0,  16 kb */
+  0x08004000,   /* sector  1,  16 kb */
+  0x08008000,   /* sector  2,  16 kb */
+  0x0800C000,   /* sector  3,  16 kb */
+  0x08010000,   /* sector  4,  64 kb */
+  0x08020000,   /* sector  5, 128 kb */
+  0x08040000,   /* sector  6, 128 kb */
+  0x08060000,   /* sector  7, 128 kb */
+  0x08080000,   /* sector  8, 128 kb */
+  0x080A0000,   /* sector  9, 128 kb */
+  0x080C0000,   /* sector 10, 128 kb */
+  0x080E0000,   /* sector 11, 128 kb */
+  0x08100000,   /* sector 10,  16 kb */
+  0x08104000,   /* sector 11,  16 kb */
+  0x08108000,   /* sector 12,  16 kb */
+  0x0810C000,   /* sector 13,  16 kb */
+  0x08110000,   /* sector 14,  64 kb */
+  0x08120000,   /* sector 15, 128 kb */
+  0x08140000,   /* sector 16, 128 kb */
+  0x08160000,   /* sector 17, 128 kb */
+  0x08180000,   /* sector 18, 128 kb */
+  0x081A0000,   /* sector 19, 128 kb */
+  0x081C0000,   /* sector 20, 128 kb */
+  0x081E0000,    /* sector 21, 128 kb */
+  0x08200000,   /* sector 21,  16 kb */
+};
 
 enum return_codes_enum {
     SUCCESS = 0,
@@ -90,7 +119,7 @@ int32_t stm32_read_flash( dfu_device_t *device,
    * in buin.data. mem_segment is the segment of memory from the
    * stm32_memory_unit_enum.
    */
-
+int32_t stm32_set_address_ptr( dfu_device_t *device, uint32_t address );
 int32_t stm32_write_flash( dfu_device_t *device, intel_buffer_out_t *bout,
     const dfu_bool eeprom, const dfu_bool force, const dfu_bool hide_progress );
   /* Flash data from the buffer to the main program memory on the device.
@@ -102,7 +131,7 @@ int32_t stm32_write_flash( dfu_device_t *device, intel_buffer_out_t *bout,
    * eeprom bool tells if you want to flash to eeprom or flash memory
    * hide_progress bool sets whether to display progress
    */
-
+int32_t stm32_write_block( dfu_device_t *device, size_t xfer_len, uint8_t *buffer );
 int32_t stm32_get_commands( dfu_device_t *device );
   /* @brief get the commands list, should be length 4
    * @param device pointer

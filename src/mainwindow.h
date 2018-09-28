@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QFileDialog>
 #include <QThread>
+#include <QCloseEvent>
 
 #include "firmwarerequest.h"
 #include "remotefileinfo.h"
@@ -41,24 +42,23 @@ public:
 signals:
     void doFlash(uint address, char* buffer, uint length);
     void stopUSB();
-
+    void startUSB();
 protected:
     bool eventFilter(QObject *obj, QEvent *event);
+    void closeEvent (QCloseEvent *event);
 private slots:
     void on_uid1_textChanged(const QString &arg1);
     void on_uid2_textChanged(const QString &arg1);
     void on_uid3_textChanged(const QString &arg1);
-
-    void onProgress(const QString& message, int progress);
+\
     void onDone(const QString& message, FirmwareRequest::Result status, char* result, int length);
-
     void onResoueceChanged(int index);
     void actionTriggered();
     //DFU
     void foundDevice();
     void lostDevice();
-    void onDfuDone(bool success, const QString& message);
-    void onDfuProgress(uint address, uint percent);
+    void onDfuDone(const QString& message, bool success);
+    void onProgress(const QString& message, int progress);
 
 private:
     uint selectedIndex();

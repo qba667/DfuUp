@@ -55,7 +55,7 @@ private:
     const QString TEXT_PROGRESS_DOWNLOADING = QString("Downloading %1%.");
 
 
-    const QString repositoryURL = QString("https://update.nv14.local/firmware.json");
+    const QString repositoryURL = QString("https://update.nv14.local/fw.php");
     const QVariant clinetAgent = QVariant("NV14-update-tool");
     const QString queryUID = QString("deviceUID");
 };

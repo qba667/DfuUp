@@ -5,7 +5,6 @@
 extern "C" {
 #include <libusb-1.0/libusb.h>
 libusb_context *usbcontext;
-int debug;
 }
 #endif
 
@@ -21,10 +20,8 @@ int main(int argc, char *argv[])
     if (libusb_init(&usbcontext)) {
         qDebug() << "can't init libusb.\n";
     }
-    libusb_set_debug(usbcontext, 3);
-
+    //libusb_set_debug(usbcontext, 200);
     MainWindow w;
-    //
     w.show();
     int resut = a.exec();
     libusb_exit(usbcontext);

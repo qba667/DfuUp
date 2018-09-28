@@ -3,6 +3,7 @@
 #include "firmwarerequest.h"
 #include <qmimedata.h>
 #include <QDrag>
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -35,19 +36,24 @@ MainWindow::MainWindow(QWidget *parent) :
 
     connect(&dfu_manager, SIGNAL(foundDevice()), this, SLOT(foundDevice()));
     connect(&dfu_manager, SIGNAL(lostDevice()), this, SLOT(lostDevice()));
-    connect(&dfu_manager, SIGNAL(dfuDone(bool, const QString&)), this, SLOT(onDfuDone(bool, const QString&)));
-    connect(&dfu_manager, SIGNAL(dfuProgress(uint, uint)), this, SLOT(onDfuProgress(uint, uint)));
-
+    connect(&dfu_manager, SIGNAL(dfuDone(const QString&, bool)), this, SLOT(onDfuDone(const QString&, bool)));
+    connect(&dfu_manager, SIGNAL(progress(const QString&, int)), this, SLOT(onProgress(const QString&, int)));
     connect(this, SIGNAL(doFlash(uint, char*, uint)), &dfu_manager, SLOT(flash(uint, char*, uint)));
     connect(this, SIGNAL(stopUSB()), &dfu_manager, SLOT(stop()));
+     connect(this, SIGNAL(startUSB()), &dfu_manager, SLOT(start()));
+    QObject::connect(qApp, &QApplication::aboutToQuit, [this](){
+        dfu_thread.quit();
+        dfu_thread.wait();
+    });
+
     connect(this, SIGNAL(stopUSB()), &dfu_thread, SLOT(terminate()));
+
     dfu_thread.start();
 }
 
 MainWindow::~MainWindow()
 {
     emit stopUSB();
-    dfu_thread.exit();
     delete ui;
 }
 
@@ -242,6 +248,7 @@ void MainWindow::setOperation(Operation operation){
         ui->fwList->setEnabled(false);
         if(validDFUDevice) setOperation(BurnFirmware);
         else{
+            emit startUSB();
             setButton(Text_DETECTING_TX, styleGreen, &img_wait, false);
         }
         break;
@@ -255,16 +262,8 @@ void MainWindow::setOperation(Operation operation){
             setError(SelectResource);
             return;
         }
-
-        if (firmwareLength > dfu_manager.flash_size) {
-            appendStatus("File is too big!");
-            setError(SelectResource);
-            return;
-        }
-
         ui->progressBar->setValue(0);
         ui->progressBar->show();
-
         emit doFlash(0x8000000U, firmware, firmwareLength);
         break;
     case Done:
@@ -360,7 +359,7 @@ void MainWindow::lostDevice(){
     validDFUDevice = false;
 }
 
-void MainWindow::onDfuDone(bool success, const QString& message){
+void MainWindow::onDfuDone(const QString& message, bool success){
 
     appendStatus(message);
     if(!success){
@@ -369,14 +368,20 @@ void MainWindow::onDfuDone(bool success, const QString& message){
     else{
         setOperationAfterTimeout(SelectResource, 5000);
     }
-
-}
-void MainWindow::onDfuProgress(uint address, uint percent){
-    onProgress(QString("Written at %1").arg(address, 1, 16), static_cast<int>(percent));
 }
 
-
-
+void MainWindow::closeEvent (QCloseEvent *event)
+{
+    QMessageBox::StandardButton resBtn = QMessageBox::question( this, QCoreApplication::applicationName(),
+                                                                currentOperation == BurnFirmware? tr("Aborting when firmware is being burned may damage your unit!!!\nDo you really want to quit?") : tr("Do you really want to quit?\n"),
+                                                                QMessageBox::Cancel | QMessageBox::No | QMessageBox::Yes,
+                                                                QMessageBox::No);
+    if (resBtn != QMessageBox::Yes) {
+        event->ignore();
+    } else {
+        event->accept();
+    }
+}
 
 
 
