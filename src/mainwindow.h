@@ -102,13 +102,14 @@ private:
 
     const QString UID_LIST = "UID_LIST";
     const QString Text_VALIDATIN_CHECKSUM = "Validating checksum";
-    const QString Text_INVALID_CHECKSUM = "Invalid checksm";
+    const QString Text_INVALID_CHECKSUM = "Invalid checksum";
     const QString Text_CHECK_UPDATES = "Check for updates";
-    const QString Text_SELECT_RESOURCE = "Select resrouce";
+    const QString Text_SELECT_RESOURCE = "Select resource";
     const QString Text_DOWNLOAD_ARCHIVE = "Download archive";
     const QString Text_DOWNLOAD_FW = "Download firmware";
     const QString Text_UPDATE_TX = "Update TX";
     const QString Text_UPDATING_TX = "TX updating...";
+    const QString Text_UPDATE_OK = "Updat succeeded";
     const QString Text_DETECTING_TX = "TX detecting...";
     const QString Text_DOWNLOADING = "Downloading...";
     const QString Text_CHECKING = "Checking for updates...";

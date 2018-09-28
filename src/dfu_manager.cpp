@@ -56,9 +56,7 @@ DFUManager::~DFUManager()
 void DFUManager::start()
 {
     onDetectionTick();
-    if(!dfu_device->handle){
-        detectionTimer->start();
-    }
+    detectionTimer->start();
 }
 void DFUManager::stop()
 {
@@ -110,6 +108,7 @@ void DFUManager::flash(uint startAddress, char* data, uint length)
     int32_t status = UNSPECIFIED_ERROR;
     if(startAddress < 0x08000000 || length > 0x00200000) {
       emit dfuDone(TEXT_INVALID_PARAMS, false);
+      emit lostDevice();
       return;
     }
     uint endAddress = startAddress + length;
@@ -130,6 +129,7 @@ void DFUManager::flash(uint startAddress, char* data, uint length)
 
     if(firstPage == -1){
         emit dfuDone(TEXT_INVALID_PARAMS, false);
+        emit lostDevice();
         return;
     }
     emit progress(TEXT_CLEARING_STARTED, 0);
@@ -137,6 +137,7 @@ void DFUManager::flash(uint startAddress, char* data, uint length)
         emit progress(TEXT_CLEARING_PAGE_AT.arg(stm32_sector_addresses[page], 8, 16, QLatin1Char('0')), 0);
         if((status = stm32_page_erase(dfu_device, stm32_sector_addresses[page], false))) {
             emit dfuDone(TEXT_ERROR_CLEARING, false);
+            emit lostDevice();
             return;
         }
     }
@@ -149,6 +150,7 @@ void DFUManager::flash(uint startAddress, char* data, uint length)
 
     if((status = stm32_set_address_ptr(dfu_device, startAddress))) {
         emit dfuDone(TEXT_BURNING_ERROR.arg(status), false);
+        emit lostDevice();
         return;
     }
 
@@ -163,13 +165,16 @@ void DFUManager::flash(uint startAddress, char* data, uint length)
         offset += TRANSFER_SIZE;
         if( (status = stm32_write_block( dfu_device, TRANSFER_SIZE, buffer )) ) {
             emit dfuDone(TEXT_BURNING_ERROR.arg(status), false);
+            emit lostDevice();
             return;
         }
         int p = static_cast<int>(((offset*100U)/length));
         emit progress(TEXT_BURNING_FW_PROGRESS.arg(startAddress + offset, 8, 16, QLatin1Char('0')).arg(p), p);
       }
 
-    stm32_start_app(dfu_device, false);
+    if(stm32_set_address_ptr(dfu_device, STM32_FLASH_OFFSET) == SUCCESS ) {
+        stm32_start_app(dfu_device, false);
+    }
 
     dfuDone(TEXT_BURNING_OK, true);
 

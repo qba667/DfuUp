@@ -119,6 +119,7 @@ int32_t stm32_read_flash( dfu_device_t *device,
    * in buin.data. mem_segment is the segment of memory from the
    * stm32_memory_unit_enum.
    */
+
 int32_t stm32_set_address_ptr( dfu_device_t *device, uint32_t address );
 int32_t stm32_write_flash( dfu_device_t *device, intel_buffer_out_t *bout,
     const dfu_bool eeprom, const dfu_bool force, const dfu_bool hide_progress );

@@ -32,7 +32,8 @@ SOURCES += \
     dfu/dfu.c \
     dfu/stm32mem.c \
     dfu_manager.cpp \
-    dfu/intel_hex.c
+    dfu/intel_hex.c \
+    aboutdialog.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -42,10 +43,12 @@ HEADERS += \
     dfu/stm32mem.h \
     dfu_manager.h \
     dfu/intel_hex.h \
-    dfu/dfu-bool.h
+    dfu/dfu-bool.h \
+    aboutdialog.h
 
 FORMS += \
-        mainwindow.ui
+        mainwindow.ui \
+    aboutdialog.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -55,6 +58,7 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 RESOURCES += \
     resources.qrc
 
+win32:RC_ICONS += resources/icon.ico
 win32: LIBS += -L$$PWD/../libusb-1.0.22/MinGW32/static -llibusb-1.0
 unix: LIBS += -L/usr/local/lib -lusb-1.0
 

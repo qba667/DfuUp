@@ -4,7 +4,7 @@
 #include <qmimedata.h>
 #include <QDrag>
 #include <QMessageBox>
-
+#include "aboutdialog.h"
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
@@ -79,6 +79,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         return true;
 
     }
+    if(event->type() == QEvent::MouseButtonRelease && obj == ui->labelHelp_2){
+        AboutDialog about(this);
+        about.exec();
+    }
     if(event->type() == QEvent::MouseMove){
         if(obj == ui->labelHelp){
             if(lastMouseMoveObject != ui->labelHelp) {
@@ -98,7 +102,6 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         else{
             lastMouseMoveObject = nullptr;
         }
-
     }
 
     return QObject::eventFilter(obj, event);
@@ -366,7 +369,8 @@ void MainWindow::onDfuDone(const QString& message, bool success){
         setError(UpdateTX);
     }
     else{
-        setOperationAfterTimeout(SelectResource, 5000);
+        setButton(Text_UPDATE_OK, styleGreen, &img_ok, false);
+        setOperationAfterTimeout(SelectResource, 10000);
     }
 }
 
